@@ -58,3 +58,13 @@ export interface RouteRequestPayload {
   origin: string;
   overlays: string[];
 }
+
+export interface FireSnapshot {
+  index: number;
+  label: string;
+  geojson: GeoJSON.FeatureCollection;
+  routeBlocked: boolean;
+  routeGeometry: RouteGeometry;
+  routeName: string;
+  routeRisk: 'low' | 'moderate' | 'high';
+}

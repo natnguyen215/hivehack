@@ -21,3 +21,6 @@ backend/.env
 # OS
 .DS_Store
 Thumbs.db
+
+# MCP config (contains API keys)
+.mcp.json
