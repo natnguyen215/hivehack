@@ -65,7 +65,7 @@ function addOverlay(map: mapboxgl.Map, overlay: GeoOverlay) {
   }
 
   if (!map.getLayer(layerId)) {
-    const style = overlayPaint[overlay.id];
+    const style = overlayPaint[overlay.id as keyof typeof overlayPaint];
     if (!style) return;
     map.addLayer({
       id: layerId,
@@ -193,5 +193,5 @@ export default function MapView({ activeOverlays, routeGeometry }: MapViewProps)
     upsertRoute(map, routeGeometry);
   }, [routeGeometry, mapReady]);
 
-  return <div ref={containerRef} className=\"h-[700px] w-full rounded-lg\" />;
+  return <div ref={containerRef} className="h-[700px] w-full rounded-lg" />;
 }

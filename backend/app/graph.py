@@ -19,7 +19,7 @@ def get_graph() -> nx.MultiDiGraph:
     global _graph
     if _graph is None:
         logger.info("Downloading OSM road graph for bbox %s …", BBOX)
-        _graph = ox.graph_from_bbox(*BBOX, network_type="drive")
+        _graph = ox.graph_from_bbox(BBOX, network_type="drive")
         logger.info(
             "Graph loaded: %d nodes, %d edges",
             _graph.number_of_nodes(),

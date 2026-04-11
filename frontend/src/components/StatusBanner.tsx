@@ -25,23 +25,23 @@ export default function StatusBanner({ status, updates }: StatusBannerProps) {
     <section
       className={`rounded-2xl bg-gradient-to-r ${gradient} px-6 py-4 text-white shadow-lg`}
     >
-      <div className=\"flex flex-col gap-3 md:flex-row md:items-center md:justify-between\">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className=\"text-sm uppercase tracking-wide opacity-80\">Current Advisory</p>
-          <p className=\"text-lg font-semibold leading-tight md:text-xl\">{advisory}</p>
+          <p className="text-sm uppercase tracking-wide opacity-80">Current Advisory</p>
+          <p className="text-lg font-semibold leading-tight md:text-xl">{advisory}</p>
           {status && (
-            <p className=\"text-sm opacity-80\">
+            <p className="text-sm opacity-80">
               {status.active_fires} active fires · Counties: {status.counties.join(', ')}
             </p>
           )}
         </div>
         {updates.length > 0 && (
-          <div className=\"rounded-xl bg-white/15 p-4 text-sm backdrop-blur\">
-            <p className=\"mb-2 text-xs uppercase tracking-wide opacity-80\">Latest Updates</p>
-            <ul className=\"space-y-1\">
+          <div className="rounded-xl bg-white/15 p-4 text-sm backdrop-blur">
+            <p className="mb-2 text-xs uppercase tracking-wide opacity-80">Latest Updates</p>
+            <ul className="space-y-1">
               {updates.slice(0, 2).map((update) => (
-                <li key={update.id} className=\"text-white/90\">
-                  <span className=\"font-semibold uppercase text-white/80\">{update.category}:</span>{' '}
+                <li key={update.id} className="text-white/90">
+                  <span className="font-semibold uppercase text-white/80">{update.category}:</span>{' '}
                   {update.message}
                 </li>
               ))}
