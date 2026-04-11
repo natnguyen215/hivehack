@@ -1,95 +1,200 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { memo, useEffect, useRef, useState } from 'react';
 
 import { fetchOverlays } from '@/lib/api';
 import type { GeoOverlay, RouteGeometry } from '@/types';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
+type DataMode = 'live' | 'historical';
+
+export type RouteDisplay = {
+  id: string;
+  geometry: RouteGeometry;
+  selected: boolean;
+};
+
 type MapViewProps = {
   activeOverlays: Set<string>;
   routeGeometry: RouteGeometry | null;
+  allRoutes?: RouteDisplay[];
   fireOverride?: GeoJSON.FeatureCollection | null;
   routeBlocked?: boolean;
+  dataMode?: DataMode;
+  mode?: DataMode;
+};
+
+type OverlayPaintStyle = {
+  type: 'fill' | 'line';
+  paint: mapboxgl.FillPaint | mapboxgl.LinePaint;
 };
 
 const ROUTE_SOURCE_ID = 'route-source';
 const ROUTE_LAYER_ID = 'route-layer';
-const FIRE_SOURCE_ID = 'fire_perimeters-source';
-const FIRE_LAYER_ID = 'fire_perimeters-layer';
+const LIVE_FIRE_SOURCE_ID = 'live-fire-source';
+const LIVE_FIRE_FILL_LAYER_ID = 'live-fire-fill-layer';
+const LIVE_FIRE_OUTLINE_LAYER_ID = 'live-fire-outline-layer';
+const HISTORICAL_FIRE_SOURCE_ID = 'historical-fire-source';
+const HISTORICAL_FIRE_FILL_LAYER_ID = 'historical-fire-fill-layer';
+const HISTORICAL_FIRE_OUTLINE_LAYER_ID = 'historical-fire-outline-layer';
 
-const overlayPaint = {
+const ROUTE_COLORS = {
+  selected: '#3b82f6',
+  blocked: '#f97316',
+  unselected: '#64748b',
+} as const;
+
+const overlayPaint: Record<string, OverlayPaintStyle> = {
   evac_zones: {
-    type: 'fill' as const,
+    type: 'fill',
     paint: {
       'fill-color': '#fb923c',
-      'fill-opacity': 0.4,
-    },
-  },
-  fire_perimeters: {
-    type: 'fill' as const,
-    paint: {
-      'fill-color': '#ef4444',
-      'fill-opacity': 0.35,
-      'fill-outline-color': '#b91c1c',
+      'fill-opacity': 0.38,
     },
   },
   smoke_regions: {
-    type: 'fill' as const,
+    type: 'fill',
     paint: {
       'fill-color': '#94a3b8',
-      'fill-opacity': 0.3,
+      'fill-opacity': 0.28,
     },
   },
   road_closures: {
-    type: 'line' as const,
+    type: 'line',
     paint: {
       'line-color': '#ef4444',
       'line-width': 2,
       'line-dasharray': [1.5, 1.5],
     },
   },
-} satisfies Record<
-  string,
-  { type: 'fill' | 'line'; paint: mapboxgl.FillPaint | mapboxgl.LinePaint }
->;
+};
 
-function addOverlay(map: mapboxgl.Map, overlay: GeoOverlay) {
+const fireFillColorExpression: any = [
+  'case',
+  ['==', ['downcase', ['to-string', ['coalesce', ['get', 'severity'], '']]], 'critical'],
+  '#b91c1c',
+  ['==', ['downcase', ['to-string', ['coalesce', ['get', 'severity'], '']]], 'high'],
+  '#dc2626',
+  ['==', ['downcase', ['to-string', ['coalesce', ['get', 'severity'], '']]], 'moderate'],
+  '#f97316',
+  ['==', ['downcase', ['to-string', ['coalesce', ['get', 'severity'], '']]], 'low'],
+  '#f59e0b',
+  [
+    'step',
+    ['coalesce', ['to-number', ['get', 'acres']], 0],
+    '#fbbf24',
+    1000,
+    '#fb923c',
+    5000,
+    '#f97316',
+    15000,
+    '#ef4444',
+    50000,
+    '#b91c1c',
+  ],
+];
+
+const fireFillOpacityExpression: any = [
+  'step',
+  ['coalesce', ['to-number', ['get', 'acres']], 0],
+  0.3,
+  1000,
+  0.36,
+  5000,
+  0.43,
+  15000,
+  0.5,
+];
+
+function ensureOverlayLayer(map: mapboxgl.Map, overlay: GeoOverlay) {
   const sourceId = `${overlay.id}-source`;
   const layerId = `${overlay.id}-layer`;
-  const paintKey = overlay.id as keyof typeof overlayPaint;
+  const style = overlayPaint[overlay.id];
+  if (!style) return;
 
-  if (!map.getSource(sourceId)) {
+  const existingSource = map.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined;
+  if (existingSource) {
+    existingSource.setData(overlay.data);
+  } else {
     map.addSource(sourceId, { type: 'geojson', data: overlay.data });
   }
 
   if (!map.getLayer(layerId)) {
-    const style = overlayPaint[paintKey];
-    if (!style) return;
-    map.addLayer({ id: layerId, type: style.type, source: sourceId, paint: style.paint });
+    map.addLayer({
+      id: layerId,
+      type: style.type,
+      source: sourceId,
+      paint: style.paint,
+      layout: { visibility: 'none' },
+    });
   }
 }
 
-function removeOverlay(map: mapboxgl.Map, overlayId: string) {
-  const sourceId = `${overlayId}-source`;
-  const layerId = `${overlayId}-layer`;
-  if (map.getLayer(layerId)) map.removeLayer(layerId);
-  if (map.getSource(sourceId)) map.removeSource(sourceId);
+function syncOverlayVisibility(map: mapboxgl.Map, overlayIds: string[], active: Set<string>) {
+  for (const id of overlayIds) {
+    const layerId = `${id}-layer`;
+    if (!map.getLayer(layerId)) continue;
+    map.setLayoutProperty(layerId, 'visibility', active.has(id) ? 'visible' : 'none');
+  }
 }
 
-function syncOverlays(map: mapboxgl.Map, overlays: Record<string, GeoOverlay>, active: Set<string>) {
-  Object.keys(overlays).forEach((id) => {
-    if (active.has(id)) addOverlay(map, overlays[id]);
-    else removeOverlay(map, id);
-  });
+function setFireLayerVisibility(
+  map: mapboxgl.Map,
+  fillLayerId: string,
+  outlineLayerId: string,
+  visible: boolean,
+) {
+  const visibility = visible ? 'visible' : 'none';
+  if (map.getLayer(fillLayerId)) map.setLayoutProperty(fillLayerId, 'visibility', visibility);
+  if (map.getLayer(outlineLayerId)) map.setLayoutProperty(outlineLayerId, 'visibility', visibility);
 }
 
-// Blue for clear routes, ember-orange for rerouted ones.
-function routeColor(blocked: boolean) {
-  return blocked ? '#f97316' : '#3b82f6';
+function ensureFireLayers(
+  map: mapboxgl.Map,
+  sourceId: string,
+  fillLayerId: string,
+  outlineLayerId: string,
+  data: GeoJSON.FeatureCollection,
+  visible: boolean,
+) {
+  const existingSource = map.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined;
+  if (!existingSource) {
+    map.addSource(sourceId, { type: 'geojson', data });
+  } else {
+    existingSource.setData(data);
+  }
+
+  if (!map.getLayer(fillLayerId)) {
+    map.addLayer({
+      id: fillLayerId,
+      type: 'fill',
+      source: sourceId,
+      paint: {
+        'fill-color': fireFillColorExpression,
+        'fill-opacity': fireFillOpacityExpression,
+      },
+      layout: { visibility: visible ? 'visible' : 'none' },
+    });
+  }
+
+  if (!map.getLayer(outlineLayerId)) {
+    map.addLayer({
+      id: outlineLayerId,
+      type: 'line',
+      source: sourceId,
+      paint: {
+        'line-color': '#7f1d1d',
+        'line-width': 2.2,
+        'line-opacity': 0.9,
+      },
+      layout: { visibility: visible ? 'visible' : 'none' },
+    });
+  }
+
+  setFireLayerVisibility(map, fillLayerId, outlineLayerId, visible);
 }
 
 function upsertRoute(map: mapboxgl.Map, geometry: RouteGeometry | null, blocked: boolean) {
@@ -100,91 +205,241 @@ function upsertRoute(map: mapboxgl.Map, geometry: RouteGeometry | null, blocked:
   }
 
   const featureData: GeoJSON.Feature = { type: 'Feature', geometry, properties: {} };
+  const existingSource = map.getSource(ROUTE_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
 
-  if (!map.getSource(ROUTE_SOURCE_ID)) {
+  if (!existingSource) {
     map.addSource(ROUTE_SOURCE_ID, { type: 'geojson', data: featureData });
   } else {
-    (map.getSource(ROUTE_SOURCE_ID) as mapboxgl.GeoJSONSource).setData(featureData);
+    existingSource.setData(featureData);
   }
 
+  const color = blocked ? ROUTE_COLORS.blocked : ROUTE_COLORS.selected;
   if (!map.getLayer(ROUTE_LAYER_ID)) {
     map.addLayer({
       id: ROUTE_LAYER_ID,
       type: 'line',
       source: ROUTE_SOURCE_ID,
-      paint: { 'line-color': routeColor(blocked), 'line-width': 4 },
+      paint: {
+        'line-color': color,
+        'line-width': 4,
+      },
     });
   } else {
-    map.setPaintProperty(ROUTE_LAYER_ID, 'line-color', routeColor(blocked));
+    map.setPaintProperty(ROUTE_LAYER_ID, 'line-color', color);
   }
 }
 
-// Compute a tight bounding box from any FeatureCollection with Polygon/MultiPolygon features.
-function getPolygonBounds(fc: GeoJSON.FeatureCollection): mapboxgl.LngLatBounds | null {
-  const bounds = new mapboxgl.LngLatBounds();
-  let hasCoords = false;
+function syncMultiRoutes(
+  map: mapboxgl.Map,
+  routes: RouteDisplay[],
+  blocked: boolean,
+  managedIds: Set<string>,
+) {
+  const activeIds = new Set(routes.map((route) => route.id));
+  const staleIds: string[] = [];
 
-  for (const feature of fc.features) {
-    const geom = feature.geometry;
+  for (const id of managedIds) {
+    if (!activeIds.has(id)) staleIds.push(id);
+  }
+
+  for (const id of staleIds) {
+    const layerId = `route-multi-${id}-layer`;
+    const sourceId = `route-multi-${id}-source`;
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+    managedIds.delete(id);
+  }
+
+  const sorted = [...routes].sort((a, b) => Number(a.selected) - Number(b.selected));
+
+  for (const route of sorted) {
+    const sourceId = `route-multi-${route.id}-source`;
+    const layerId = `route-multi-${route.id}-layer`;
+    const feature: GeoJSON.Feature = { type: 'Feature', geometry: route.geometry, properties: {} };
+
+    const color = route.selected
+      ? blocked
+        ? ROUTE_COLORS.blocked
+        : ROUTE_COLORS.selected
+      : ROUTE_COLORS.unselected;
+    const width = route.selected ? 5 : 3;
+    const opacity = route.selected ? 1 : 0.52;
+
+    const existingSource = map.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined;
+    if (!existingSource) {
+      map.addSource(sourceId, { type: 'geojson', data: feature });
+    } else {
+      existingSource.setData(feature);
+    }
+
+    if (!map.getLayer(layerId)) {
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': color,
+          'line-width': width,
+          'line-opacity': opacity,
+        },
+      });
+    } else {
+      map.setPaintProperty(layerId, 'line-color', color);
+      map.setPaintProperty(layerId, 'line-width', width);
+      map.setPaintProperty(layerId, 'line-opacity', opacity);
+      if (route.selected) map.moveLayer(layerId);
+    }
+
+    managedIds.add(route.id);
+  }
+}
+
+function removeAllMultiRoutes(map: mapboxgl.Map, managedIds: Set<string>) {
+  for (const id of managedIds) {
+    const layerId = `route-multi-${id}-layer`;
+    const sourceId = `route-multi-${id}-source`;
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+  }
+  managedIds.clear();
+}
+
+function getPolygonBounds(featureCollection: GeoJSON.FeatureCollection): mapboxgl.LngLatBounds | null {
+  const bounds = new mapboxgl.LngLatBounds();
+  let hasCoordinates = false;
+
+  for (const feature of featureCollection.features) {
+    const geometry = feature.geometry;
+    if (!geometry) continue;
+
     let rings: number[][][] = [];
-    if (geom.type === 'Polygon') rings = geom.coordinates;
-    else if (geom.type === 'MultiPolygon') rings = geom.coordinates.flat();
+
+    if (geometry.type === 'Polygon') {
+      rings = geometry.coordinates;
+    } else if (geometry.type === 'MultiPolygon') {
+      rings = geometry.coordinates.flat();
+    }
 
     for (const ring of rings) {
-      for (const coord of ring) {
-        bounds.extend(coord as [number, number]);
-        hasCoords = true;
+      for (const coordinate of ring) {
+        bounds.extend(coordinate as [number, number]);
+        hasCoordinates = true;
       }
     }
   }
 
-  return hasCoords ? bounds : null;
+  return hasCoordinates ? bounds : null;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function firstValue(props: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    if (props[key] !== undefined && props[key] !== null && String(props[key]).trim()) {
+      return props[key];
+    }
+  }
+  return undefined;
+}
+
+function getNumeric(props: Record<string, unknown>, keys: string[]) {
+  const raw = firstValue(props, keys);
+  if (raw === undefined) return undefined;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : undefined;
 }
 
 function buildPopupHtml(props: Record<string, unknown>) {
-  const name = String(props.name ?? 'Fire Perimeter');
-  const timestamp = props.timestamp ? `<div style="color:#94a3b8;margin-top:2px;">${props.timestamp}</div>` : '';
-  const acres = props.acres
-    ? `<div style="color:#fca5a5;font-weight:600;margin-top:3px;">${Number(props.acres).toLocaleString()} acres</div>`
+  const nameRaw = firstValue(props, ['name', 'incident_name', 'incident', 'poly_IncidentName', 'FIRE_NAME']);
+  const statusRaw = firstValue(props, ['status', 'state', 'incident_status', 'poly_Status']);
+  const timestampRaw = firstValue(props, ['timestamp', 'updated_at', 'poly_DateCurrent', 'DATE_CURRENT']);
+  const severityRaw = firstValue(props, ['severity', 'risk', 'risk_level']);
+  const acres = getNumeric(props, ['acres', 'gis_acres', 'poly_GISAcres', 'GIS_ACRES']);
+
+  const name = escapeHtml(String(nameRaw ?? 'Fire Perimeter'));
+  const timestamp = timestampRaw
+    ? `<div style="color:#94a3b8;margin-top:2px;">${escapeHtml(String(timestampRaw))}</div>`
     : '';
+  const status = statusRaw
+    ? `<div style="color:#cbd5e1;margin-top:2px;">Status: ${escapeHtml(String(statusRaw))}</div>`
+    : '';
+  const severity = severityRaw
+    ? `<div style="color:#fca5a5;margin-top:2px;">Severity: ${escapeHtml(String(severityRaw))}</div>`
+    : '';
+  const acresMarkup = typeof acres === 'number'
+    ? `<div style="color:#fca5a5;font-weight:600;margin-top:3px;">${Math.round(acres).toLocaleString()} acres</div>`
+    : '';
+
   return `<div style="font-family:system-ui;font-size:12px;padding:2px 4px;background:#1e293b;color:#f1f5f9;border-radius:6px;">
-    <strong style="font-size:13px;">${name}</strong>${timestamp}${acres}
+    <strong style="font-size:13px;">${name}</strong>${timestamp}${status}${severity}${acresMarkup}
   </div>`;
 }
 
-export default function MapView({ activeOverlays, routeGeometry, fireOverride, routeBlocked = false }: MapViewProps) {
+function MapView({
+  activeOverlays,
+  routeGeometry,
+  allRoutes = [],
+  fireOverride,
+  routeBlocked = false,
+  dataMode,
+  mode,
+}: MapViewProps) {
+  const resolvedMode = mode ?? dataMode ?? 'live';
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
-  const [overlays, setOverlays] = useState<Record<string, GeoOverlay>>({});
-  const [mapReady, setMapReady] = useState(false);
+  const managedRouteIdsRef = useRef<Set<string>>(new Set());
+  const lastBoundsKeyRef = useRef<Record<DataMode, string>>({ live: '', historical: '' });
 
-  // Initialize map once.
+  const [mapReady, setMapReady] = useState(false);
+  const [overlayIds, setOverlayIds] = useState<string[]>([]);
+  const [liveFireData, setLiveFireData] = useState<GeoJSON.FeatureCollection | null>(null);
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    mapRef.current = new mapboxgl.Map({
+    const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: 'mapbox://styles/mapbox/outdoors-v12',
+      style: 'mapbox://styles/mapbox/dark-v11',
       center: [-118.52, 34.04],
       zoom: 9,
     });
-    mapRef.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    mapRef.current = map;
 
-    const map = mapRef.current;
-    map.on('load', async () => {
+    map.on('load', () => {
       setMapReady(true);
-      try {
-        const data = await fetchOverlays();
-        const overlayMap = data.overlays.reduce<Record<string, GeoOverlay>>((acc, o: GeoOverlay) => {
-          acc[o.id] = o;
-          return acc;
-        }, {});
-        setOverlays(overlayMap);
-        syncOverlays(map, overlayMap, activeOverlays);
-      } catch (err) {
-        console.error('Failed to load overlays', err);
-      }
+
+      void (async () => {
+        try {
+          const data = await fetchOverlays();
+          const nextIds: string[] = [];
+          let nextLiveFire: GeoJSON.FeatureCollection | null = null;
+
+          for (const overlay of data.overlays) {
+            if (overlay.id === 'fire_perimeters') {
+              nextLiveFire = overlay.data;
+              continue;
+            }
+
+            ensureOverlayLayer(map, overlay);
+            nextIds.push(overlay.id);
+          }
+
+          setOverlayIds(nextIds);
+          setLiveFireData(nextLiveFire);
+        } catch {
+          setOverlayIds([]);
+          setLiveFireData(null);
+        }
+      })();
     });
 
     return () => {
@@ -192,40 +447,114 @@ export default function MapView({ activeOverlays, routeGeometry, fireOverride, r
       map.remove();
       mapRef.current = null;
     };
-  }, [activeOverlays]);
+  }, []);
 
-  // Sync overlay visibility when the active set or loaded overlays change.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    syncOverlays(map, overlays, activeOverlays);
-  }, [activeOverlays, mapReady, overlays]);
 
-  // Update route line; change color to orange when rerouted.
+    const visibleOverlays = resolvedMode === 'live' ? activeOverlays : new Set<string>();
+    syncOverlayVisibility(map, overlayIds, visibleOverlays);
+  }, [activeOverlays, mapReady, overlayIds, resolvedMode]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    upsertRoute(map, routeGeometry, routeBlocked);
-  }, [routeGeometry, mapReady, routeBlocked]);
 
-  // Hot-swap the fire polygon and fit the map to the new perimeter.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady || !fireOverride) return;
+    const managedIds = managedRouteIdsRef.current;
 
-    const source = map.getSource(FIRE_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
-    if (source) source.setData(fireOverride);
-
-    const bounds = getPolygonBounds(fireOverride);
-    if (bounds) {
-      map.fitBounds(bounds, { padding: 120, duration: 600, maxZoom: 11 });
+    if (allRoutes.length > 0) {
+      if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID);
+      if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID);
+      syncMultiRoutes(map, allRoutes, routeBlocked, managedIds);
+      return;
     }
-  }, [fireOverride, mapReady]);
 
-  // Attach/reattach hover popup on the fire layer whenever the map or overlays update.
+    removeAllMultiRoutes(map, managedIds);
+    upsertRoute(map, routeGeometry, routeBlocked);
+  }, [allRoutes, mapReady, routeBlocked, routeGeometry]);
+
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || !map.getLayer(FIRE_LAYER_ID)) return;
+    if (!map || !mapReady) return;
+
+    const preferredLiveFireData =
+      resolvedMode === 'live' && fireOverride ? fireOverride : liveFireData;
+
+    if (preferredLiveFireData) {
+      ensureFireLayers(
+        map,
+        LIVE_FIRE_SOURCE_ID,
+        LIVE_FIRE_FILL_LAYER_ID,
+        LIVE_FIRE_OUTLINE_LAYER_ID,
+        preferredLiveFireData,
+        resolvedMode === 'live' && activeOverlays.has('fire_perimeters'),
+      );
+    } else {
+      setFireLayerVisibility(map, LIVE_FIRE_FILL_LAYER_ID, LIVE_FIRE_OUTLINE_LAYER_ID, false);
+    }
+
+    setFireLayerVisibility(
+      map,
+      LIVE_FIRE_FILL_LAYER_ID,
+      LIVE_FIRE_OUTLINE_LAYER_ID,
+      resolvedMode === 'live'
+      && activeOverlays.has('fire_perimeters')
+      && Boolean(preferredLiveFireData),
+    );
+  }, [activeOverlays, fireOverride, liveFireData, mapReady, resolvedMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    if (resolvedMode === 'historical' && fireOverride) {
+      ensureFireLayers(
+        map,
+        HISTORICAL_FIRE_SOURCE_ID,
+        HISTORICAL_FIRE_FILL_LAYER_ID,
+        HISTORICAL_FIRE_OUTLINE_LAYER_ID,
+        fireOverride,
+        resolvedMode === 'historical',
+      );
+    } else {
+      setFireLayerVisibility(map, HISTORICAL_FIRE_FILL_LAYER_ID, HISTORICAL_FIRE_OUTLINE_LAYER_ID, false);
+    }
+
+    setFireLayerVisibility(
+      map,
+      HISTORICAL_FIRE_FILL_LAYER_ID,
+      HISTORICAL_FIRE_OUTLINE_LAYER_ID,
+      resolvedMode === 'historical' && Boolean(fireOverride),
+    );
+  }, [fireOverride, mapReady, resolvedMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const focusData = resolvedMode === 'historical'
+      ? fireOverride
+      : (fireOverride ?? liveFireData);
+    if (!focusData) return;
+
+    const bounds = getPolygonBounds(focusData);
+    if (!bounds) return;
+
+    const boundsKey = `${bounds.getWest().toFixed(3)},${bounds.getSouth().toFixed(3)},${bounds.getEast().toFixed(3)},${bounds.getNorth().toFixed(3)}`;
+    if (boundsKey === lastBoundsKeyRef.current[resolvedMode]) return;
+
+    lastBoundsKeyRef.current[resolvedMode] = boundsKey;
+    map.fitBounds(bounds, {
+      padding: 120,
+      duration: 600,
+      maxZoom: 11,
+    });
+  }, [liveFireData, fireOverride, mapReady, resolvedMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
 
     if (!popupRef.current) {
       popupRef.current = new mapboxgl.Popup({
@@ -234,15 +563,16 @@ export default function MapView({ activeOverlays, routeGeometry, fireOverride, r
         offset: 12,
       });
     }
-    const popup = popupRef.current;
 
+    const popup = popupRef.current;
     type LayerMouseEvent = mapboxgl.MapMouseEvent & { features?: mapboxgl.GeoJSONFeature[] };
-    const onMove = (e: LayerMouseEvent) => {
+
+    const onMove = (event: LayerMouseEvent) => {
       map.getCanvas().style.cursor = 'crosshair';
-      const props = e.features?.[0]?.properties as Record<string, unknown> | undefined;
-      if (props) {
-        popup.setLngLat(e.lngLat).setHTML(buildPopupHtml(props)).addTo(map);
-      }
+      const props = event.features?.[0]?.properties as Record<string, unknown> | undefined;
+      if (!props) return;
+
+      popup.setLngLat(event.lngLat).setHTML(buildPopupHtml(props)).addTo(map);
     };
 
     const onLeave = () => {
@@ -250,17 +580,26 @@ export default function MapView({ activeOverlays, routeGeometry, fireOverride, r
       popup.remove();
     };
 
-    map.on('mousemove', FIRE_LAYER_ID, onMove);
-    map.on('mouseleave', FIRE_LAYER_ID, onLeave);
+    const trackedLayerIds: string[] = [];
+    const layerCandidates = [LIVE_FIRE_FILL_LAYER_ID, HISTORICAL_FIRE_FILL_LAYER_ID];
+
+    for (const layerId of layerCandidates) {
+      if (!map.getLayer(layerId)) continue;
+      map.on('mousemove', layerId, onMove);
+      map.on('mouseleave', layerId, onLeave);
+      trackedLayerIds.push(layerId);
+    }
 
     return () => {
-      map.off('mousemove', FIRE_LAYER_ID, onMove);
-      map.off('mouseleave', FIRE_LAYER_ID, onLeave);
+      for (const layerId of trackedLayerIds) {
+        map.off('mousemove', layerId, onMove);
+        map.off('mouseleave', layerId, onLeave);
+      }
       popup.remove();
     };
-  }, [mapReady, overlays]);
+  }, [liveFireData, fireOverride, mapReady]);
 
-
-  return <div ref={containerRef} className="h-[700px] w-full rounded-lg" />;
+  return <div ref={containerRef} className="h-full w-full" />;
 }
 
+export default memo(MapView);

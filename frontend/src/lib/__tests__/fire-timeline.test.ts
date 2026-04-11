@@ -64,15 +64,17 @@ describe('FIRE_SNAPSHOTS', () => {
 
   it('every snapshot has a LineString route geometry with at least 2 coordinates', () => {
     FIRE_SNAPSHOTS.forEach((snap) => {
-      expect(snap.routeGeometry.type).toBe('LineString');
-      expect(snap.routeGeometry.coordinates.length).toBeGreaterThanOrEqual(2);
+      expect(snap.routeGeometry).toBeDefined();
+      expect(snap.routeGeometry!.type).toBe('LineString');
+      expect(snap.routeGeometry!.coordinates.length).toBeGreaterThanOrEqual(2);
     });
   });
 
   it('all snapshots start from Downtown LA', () => {
     const [downtownLng, downtownLat] = [-118.2437, 34.0522];
     FIRE_SNAPSHOTS.forEach((snap) => {
-      const [lng, lat] = snap.routeGeometry.coordinates[0];
+      expect(snap.routeGeometry).toBeDefined();
+      const [lng, lat] = snap.routeGeometry!.coordinates[0];
       expect(lng).toBeCloseTo(downtownLng, 3);
       expect(lat).toBeCloseTo(downtownLat, 3);
     });
