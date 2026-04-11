@@ -1,24 +1,30 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-All runtime code lives under `frontend/`. Next.js routes stay in `frontend/src/app/` (`layout.tsx`, `page.tsx`, and `globals.css` for Tailwind reset). Shared UI is grouped in `frontend/src/components/` (`MapView.tsx`, `Sidebar.tsx`, `StatusBanner.tsx`). HTTP helpers and cross-cutting hooks sit in `frontend/src/lib/` (`api.ts`, `utils.ts`), while domain types belong to `frontend/src/types/`. Keep new assets in `frontend/public/` and mirror the existing folder names when adding features so Mapbox, forms, and banners remain predictable.
+The repo has two apps plus orchestration. `frontend/` hosts the Next.js Mapbox UI (`src/app` for routes, `src/components` for UI, `src/lib` for API helpers, `src/types` for contracts, and `public/` for static assets). `backend/` is a FastAPI service with all logic inside `app/` (`main.py` endpoints, `models.py` Pydantic schemas, `mock.py` fixture data). Docker builds live in each subfolder, while `docker-compose.yml` wires `frontend`, `backend`, `postgres`, and `redis` onto `ember-net`.
 
 ## Build, Test, and Development Commands
-Run these from `frontend/`:
-- `npm install` — installs Next.js, Tailwind, Mapbox, and testing deps.
-- `npm run dev` — starts the Next.js dev server (MapView renders client-side with `ssr: false`).
-- `npm run build` — type-checks and emits the production bundle.
-- `npm run lint` — executes ESLint/`next lint` plus Tailwind class validation.
-- `npm run test` — runs Vitest + Testing Library suites.
+Frontend (run inside `frontend/`):
+- `npm install` — install Next.js, Tailwind, Mapbox, Vitest deps.
+- `npm run dev` — Next.js dev server with MapView dynamically imported (`ssr: false`).
+- `npm run build` — type-check + compile for production.
+- `npm run lint` and `npm run test` — ESLint/`next lint` and Vitest suites.
+
+Backend (run inside `backend/`):
+- `python -m venv .venv && .venv/Scripts/activate`
+- `pip install -r requirements.txt`
+- `uvicorn app.main:app --reload` — serves the mock API.
+
+Top-level: `docker-compose up --build` starts all four services.
 
 ## Coding Style & Naming Conventions
-Use TypeScript with 2-space indentation and single quotes. Components follow `PascalCase` (`RouteCard.tsx`), hooks use `useCamelCase`, and helper files prefer `kebab-case`. Keep React components functional, store styling in Tailwind utility strings, and rely on the `cn` helper for conditional classes. Guard client-only modules (`mapbox-gl`) with `'use client'` headers and lazy imports inside `MapView`.
+Use TypeScript + React with 2-space indentation and single quotes. Components use `PascalCase`, hooks use `useCamelCase`, helpers use `kebab-case`. Keep Tailwind classes inline, use the shared `cn()` helper, and gate `mapbox-gl` usage with `'use client'` + dynamic imports. Python follows Black-style conventions (lower_snake_case functions, single module per concern). Avoid `print`/`console.log` in committed code.
 
 ## Testing Guidelines
-Vitest plus `@testing-library/react` handles unit and integration tests. Co-locate tests beside source files using `.test.tsx` (e.g., `components/__tests__/Sidebar.test.tsx`). Describe behaviors (“shows shelter ETA once route data arrives”) and stub Mapbox APIs to keep suites deterministic. Every feature PR should include at least one success and one failure-path test, and run `npm run test -- --coverage` to keep alert logic above 80% statement coverage.
+Vitest + Testing Library cover frontend units; place `.test.tsx` files beside their components (`components/__tests__/Sidebar.test.tsx`). Stub Mapbox in tests to avoid DOM errors. Backend routes are backed by static fixtures; if you add logic, add pytest coverage under `backend/tests/` and hit `/health` plus `/api/*` endpoints in integration smoke tests. Aim for >80% statements.
 
 ## Commit & Pull Request Guidelines
-Use conventional commit prefixes (`feat:`, `fix:`, `chore:`) and keep commits scoped to a single concern. PRs require: a short summary, screenshots or GIFs for UI changes, explicit run/test steps, and notes on any env vars, Mapbox styles, or fixtures touched. Link the relevant issue or Trello card. Request review only after `npm run lint`, `npm run test`, and `npm run build` pass locally.
+Commits follow conventional prefixes (`feat:`, `fix:`, `chore:`). Keep changes scoped to one area (e.g., `feat: backend overlays endpoint`). PRs should include summary, testing steps (`npm run lint && npm run test`, `uvicorn app.main:app --reload`), screenshots/GIFs for UI, and notes on env or data changes. Reference tickets/Trello cards when available.
 
 ## Configuration & Environment Tips
-Copy `.env.example` to `.env.local` and fill in keys like `NEXT_PUBLIC_MAPBOX_TOKEN`. Never commit real secrets. Tailwind design tokens live in `tailwind.config.ts`; update them before editing component classes. Use `.dockerignore` + `Dockerfile` to verify deployment parity via `docker build -t emberpath-frontend .` followed by `docker run -p 3000:3000 emberpath-frontend`.
+Copy `.env.example` files in both apps (`frontend/.env.local`, `backend/.env`) and provide Mapbox tokens, API URLs, and service URIs. Never commit real secrets. Map overlays load only after the Mapbox `load` event and must guard `map.getSource(id)` before add/remove. When running in Docker, remember `frontend` mounts host source plus an anonymous `node_modules` volume so local installs don’t conflict.
