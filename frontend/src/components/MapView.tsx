@@ -60,13 +60,14 @@ const overlayPaint = {
 function addOverlay(map: mapboxgl.Map, overlay: GeoOverlay) {
   const sourceId = `${overlay.id}-source`;
   const layerId = `${overlay.id}-layer`;
+  const paintKey = overlay.id as keyof typeof overlayPaint;
 
   if (!map.getSource(sourceId)) {
     map.addSource(sourceId, { type: 'geojson', data: overlay.data });
   }
 
   if (!map.getLayer(layerId)) {
-    const style = overlayPaint[overlay.id];
+    const style = overlayPaint[paintKey];
     if (!style) return;
     map.addLayer({ id: layerId, type: style.type, source: sourceId, paint: style.paint });
   }
