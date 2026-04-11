@@ -443,7 +443,6 @@ function Sidebar({
                     Find Safe Routes
                   </>
                 )}
->>>>>>> origin/main
               </button>
             </form>
           </>
