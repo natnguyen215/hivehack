@@ -63,6 +63,29 @@ pre,
   border-top-color: var(--surface-2) !important;
 }
 
+.map-theme-dark .mapboxgl-canvas,
+.map-theme-gray .mapboxgl-canvas,
+.map-theme-white .mapboxgl-canvas,
+.map-theme-color .mapboxgl-canvas {
+  transition: filter 220ms ease;
+}
+
+.map-theme-dark .mapboxgl-canvas {
+  filter: none;
+}
+
+.map-theme-gray .mapboxgl-canvas {
+  filter: grayscale(1) brightness(0.92) contrast(1.08) saturate(0);
+}
+
+.map-theme-white .mapboxgl-canvas {
+  filter: grayscale(1) brightness(2.6) contrast(0.45) saturate(0);
+}
+
+.map-theme-color .mapboxgl-canvas {
+  filter: sepia(0.22) hue-rotate(135deg) saturate(1.6) contrast(1.03);
+}
+
 @keyframes pulse-dot {
   0%,
   100% {

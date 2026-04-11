@@ -1,5 +1,6 @@
 export type SeverityLevel = 'critical' | 'high' | 'moderate' | 'low' | 'info';
 export type DataMode = 'live' | 'historical';
+export type MapTheme = 'dark' | 'gray' | 'white' | 'color';
 
 export interface WildfireStatus {
   level: string;
@@ -84,8 +85,8 @@ export interface FireImpact {
 }
 
 export interface RouteRequestPayload {
-  origin: string;
-  destination: string;
+  origin: string | [number, number];
+  destination: string | [number, number];
   overlays: string[];
   timestamp?: string;
   mode?: DataMode;

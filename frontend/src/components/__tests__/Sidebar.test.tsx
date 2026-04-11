@@ -45,7 +45,7 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
     destination: 'Santa Barbara, CA',
     onOriginChange: vi.fn(),
     onDestinationChange: vi.fn(),
-    activeOverlays: new Set(['fire_perimeters', 'smoke_regions']),
+    activeOverlays: new Set(['fire_perimeters']),
     onToggle: vi.fn(),
     routeData: mockRouteData,
     loading: false,
@@ -77,14 +77,22 @@ describe('Sidebar', () => {
     expect(onModeChange).toHaveBeenCalledWith('historical');
   });
 
+  it('fires map color callback when selecting a new theme', () => {
+    const onMapThemeChange = vi.fn();
+    renderSidebar({ onMapThemeChange, mapTheme: 'dark' });
+
+    fireEvent.click(screen.getByRole('button', { name: /Pure Grey/i }));
+    expect(onMapThemeChange).toHaveBeenCalledWith('gray');
+  });
+
   it('shows live refresh, incidents, and route impact warning', () => {
     const onRefreshLiveData = vi.fn();
 
     renderSidebar({
       liveLastUpdated: '2026-04-11T14:30:00.000Z',
       keyIncidents: [
-        { id: 'i1', name: 'Palisades Fire', acres: 23450 },
-        { id: 'i2', name: 'Sunset Fire', acres: 4120 },
+        { id: 'i1', name: 'Palisades Fire', acres: 23450, severity: 'critical' },
+        { id: 'i2', name: 'Sunset Fire', acres: 4120, severity: 'moderate' },
       ],
       fireImpact: {
         blocked: true,

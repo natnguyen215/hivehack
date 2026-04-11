@@ -73,32 +73,6 @@ MOCK_ROUTES = {
 }
 
 OVERLAY_GEOJSON = {
-    "evac_zones": {
-        "id": "evac_zones",
-        "name": "Evacuation Zones",
-        "category": "evacuation",
-        "data": {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "properties": {"name": "Hollywood Hills"},
-                    "geometry": {
-                        "type": "Polygon",
-                        "coordinates": [
-                            [
-                                [-118.382, 34.143],
-                                [-118.327, 34.143],
-                                [-118.327, 34.101],
-                                [-118.382, 34.101],
-                                [-118.382, 34.143],
-                            ]
-                        ],
-                    },
-                }
-            ],
-        },
-    },
     "fire_perimeters": {
         "id": "fire_perimeters",
         "name": "Fire Perimeters",
@@ -119,54 +93,6 @@ OVERLAY_GEOJSON = {
                                 [-118.650, 34.070],
                                 [-118.650, 34.120],
                             ]
-                        ],
-                    },
-                }
-            ],
-        },
-    },
-    "smoke_regions": {
-        "id": "smoke_regions",
-        "name": "Smoke Plumes",
-        "category": "smoke",
-        "data": {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "properties": {"density": "moderate"},
-                    "geometry": {
-                        "type": "Polygon",
-                        "coordinates": [
-                            [
-                                [-118.500, 34.300],
-                                [-118.100, 34.300],
-                                [-118.100, 34.050],
-                                [-118.500, 34.050],
-                                [-118.500, 34.300],
-                            ]
-                        ],
-                    },
-                }
-            ],
-        },
-    },
-    "road_closures": {
-        "id": "road_closures",
-        "name": "Road Closures",
-        "category": "roads",
-        "data": {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "properties": {"status": "closed"},
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [
-                            [-118.289, 34.090],
-                            [-118.260, 34.075],
-                            [-118.240, 34.050],
                         ],
                     },
                 }
