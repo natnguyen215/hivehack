@@ -5,3 +5,7 @@ pydantic-settings
 python-dotenv
 psycopg2-binary
 redis
+osmnx==1.9.3
+networkx==3.3
+shapely==2.0.4
+geopandas==0.14.4
