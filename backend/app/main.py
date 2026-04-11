@@ -11,6 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic_settings import BaseSettings
 
 from .mock import LIVE_UPDATES, MOCK_ROUTES, OVERLAY_GEOJSON, WILDFIRE_STATUS
+from . import graph as graph_module
+from . import router as routing
+from . import db, cache
 from .models import (
     GeoOverlay,
     LiveUpdate,
@@ -70,6 +73,8 @@ async def _attempt_service_pings() -> None:
 @app.on_event("startup")
 async def startup_event() -> None:
     await _attempt_service_pings()
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, graph_module.get_graph)  # warm graph cache
 
 
 @app.get("/health")
@@ -85,7 +90,32 @@ def get_status() -> WildfireStatus:
 @app.post("/api/routes", response_model=RouteResponse)
 def get_routes(request: RouteRequest) -> RouteResponse:
     logger.info("Route requested from %s overlays=%s", request.origin, request.overlays)
-    return RouteResponse(**MOCK_ROUTES)
+    cache_key = f"route:{request.origin}:{request.destination}:{request.timestamp}"
+    cached = cache.get_cached_route(cache_key)
+    if cached:
+        return RouteResponse(**cached)
+
+    fire_polygon = db.get_fire_polygon(request.timestamp)
+    geometry = routing.compute_route(
+        origin=request.origin,
+        destination=request.destination,
+        fire_geojson=fire_polygon,
+    )
+
+    result = {
+        "recommended": {
+            "id": "dynamic",
+            "name": "Safest Evacuation Route",
+            "distance_miles": 0.0,
+            "duration_minutes": 0.0,
+            "risk": "low" if fire_polygon else "unknown",
+            "segments": [],
+            "geometry": geometry,
+        },
+        "alternatives": [],
+    }
+    cache.set_cached_route(cache_key, result)
+    return RouteResponse(**result)
 
 
 @app.get("/api/overlays", response_model=OverlaysResponse)
