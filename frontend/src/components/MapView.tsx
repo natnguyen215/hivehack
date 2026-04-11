@@ -191,7 +191,7 @@ export default function MapView({ activeOverlays, routeGeometry, fireOverride, r
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [activeOverlays]);
 
   // Sync overlay visibility when the active set or loaded overlays change.
   useEffect(() => {
@@ -259,5 +259,7 @@ export default function MapView({ activeOverlays, routeGeometry, fireOverride, r
     };
   }, [mapReady, overlays]);
 
+
   return <div ref={containerRef} className="h-[700px] w-full rounded-lg" />;
 }
+

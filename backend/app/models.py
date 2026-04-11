@@ -31,8 +31,10 @@ class Route(BaseModel):
 
 
 class RouteRequest(BaseModel):
-    origin: str
+    origin: List[float]  # [lng, lat]
+    destination: List[float] = [-119.6982, 34.4208]
     overlays: List[str] = []
+    timestamp: str = "T+0"
 
 
 class RouteResponse(BaseModel):
