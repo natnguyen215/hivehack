@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import networkx as nx
 import osmnx as ox
@@ -10,6 +11,10 @@ logger = logging.getLogger("emberpath.graph")
 # Bounding box covering LA through Santa Barbara along the coast
 # (north, south, east, west) — wide enough for realistic evacuation routing
 BBOX = (34.50, 33.90, -118.10, -119.80)
+
+_CACHE_DIR = Path(__file__).parent.parent / "cache"
+ox.settings.cache_folder = str(_CACHE_DIR)
+ox.settings.use_cache = True
 
 _graph: nx.MultiDiGraph | None = None
 

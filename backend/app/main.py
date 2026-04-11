@@ -123,9 +123,10 @@ async def startup_event() -> None:
         logger.warning("Graph module unavailable. Route warmup skipped.")
         return
 
+    # Warm graph cache in background so startup doesn't block
     loop = asyncio.get_running_loop()
     try:
-        await loop.run_in_executor(None, graph_module.get_graph)  # warm graph cache
+        loop.run_in_executor(None, graph_module.get_graph)
     except Exception as exc:  # pragma: no cover - best-effort warmup
         logger.warning("Graph warmup failed: %s", exc)
 
