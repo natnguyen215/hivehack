@@ -31,7 +31,7 @@ def _penalized_graph(fire_geojson: dict) -> nx.MultiDiGraph:
 
 
 def compute_route(
-    origin: list[float],  # [lng, lat]
+    origin: list[float],       # [lng, lat]
     destination: list[float],  # [lng, lat]
     fire_geojson: dict | None = None,
 ) -> dict:

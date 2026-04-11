@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic_settings import BaseSettings
 
-from .mock import LIVE_UPDATES, MOCK_ROUTES, OVERLAY_GEOJSON, WILDFIRE_STATUS
+from .mock import LIVE_UPDATES, OVERLAY_GEOJSON, WILDFIRE_STATUS
 from . import graph as graph_module
 from . import router as routing
 from . import db, cache
