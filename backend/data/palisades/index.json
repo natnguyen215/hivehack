@@ -1,0 +1,53 @@
+{
+  "fire": "Palisades Fire",
+  "unique_fire_id": "2025-CALFD-000738",
+  "description": "5 timestamped GeoJSON fire perimeter snapshots for the 2025 Palisades Fire, Los Angeles County, CA. Final perimeter is official NIFC/WFIGS data (IR-mapped). Intermediate stages derived by intersecting the final perimeter with directional ellipses scaled to match ICS-209 reported acreages.",
+  "coordinate_system": "WGS84 (EPSG:4326)",
+  "sources": {
+    "final_perimeter": "NIFC WFIGS Interagency Fire Perimeters (services3.arcgis.com/T4QMspbfLg3qTGWY)",
+    "acreage_progression": "ICS-209 situation reports via Wikipedia / CAL FIRE incident page",
+    "statistics": "palisades_stats.json"
+  },
+  "snapshots": [
+    {
+      "file": "palisades_20250107T183000.geojson",
+      "timestamp": "2025-01-07T18:30:00Z",
+      "label": "Day 1 – Ignition",
+      "reported_acres": 1262,
+      "percent_contained": 0,
+      "size_kb": 2.3
+    },
+    {
+      "file": "palisades_20250108T230000.geojson",
+      "timestamp": "2025-01-08T23:00:00Z",
+      "label": "Day 2 – Explosive Spread",
+      "reported_acres": 17234,
+      "percent_contained": 0,
+      "size_kb": 14.2
+    },
+    {
+      "file": "palisades_20250110T143300.geojson",
+      "timestamp": "2025-01-10T14:33:00Z",
+      "label": "Day 4 – Winds Ease",
+      "reported_acres": 21317,
+      "percent_contained": 8,
+      "size_kb": 19.8
+    },
+    {
+      "file": "palisades_20250112T063300.geojson",
+      "timestamp": "2025-01-12T06:33:00Z",
+      "label": "Day 6 – Growth Stops",
+      "reported_acres": 23707,
+      "percent_contained": 11,
+      "size_kb": 22.8
+    },
+    {
+      "file": "palisades_20250121T234300.geojson",
+      "timestamp": "2025-01-21T23:43:00Z",
+      "label": "Day 15 – 65% Contained",
+      "reported_acres": 23448,
+      "percent_contained": 65,
+      "size_kb": 22.8
+    }
+  ]
+}
