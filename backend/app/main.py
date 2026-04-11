@@ -74,7 +74,10 @@ async def _attempt_service_pings() -> None:
 async def startup_event() -> None:
     await _attempt_service_pings()
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, graph_module.get_graph)  # warm graph cache
+    try:
+        await loop.run_in_executor(None, graph_module.get_graph)  # warm graph cache
+    except Exception as exc:  # pragma: no cover - best-effort warmup
+        logger.warning("Graph warmup failed: %s", exc)
 
 
 @app.get("/health")
