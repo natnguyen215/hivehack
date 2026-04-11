@@ -179,7 +179,7 @@ export default function MapView({ activeOverlays, routeGeometry }: MapViewProps)
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [activeOverlays]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -193,5 +193,6 @@ export default function MapView({ activeOverlays, routeGeometry }: MapViewProps)
     upsertRoute(map, routeGeometry);
   }, [routeGeometry, mapReady]);
 
-  return <div ref={containerRef} className=\"h-[700px] w-full rounded-lg\" />;
+  return <div ref={containerRef} className="h-[700px] w-full rounded-lg" />;
 }
+

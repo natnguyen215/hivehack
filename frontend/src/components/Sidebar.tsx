@@ -24,8 +24,8 @@ const overlayOptions = [
 
 function RouteCard({ route, title }: { route: Route; title: string }) {
   return (
-    <div className=\"space-y-2 rounded-xl border border-white/10 bg-slate-800/60 p-4 shadow-sm\">
-      <div className=\"flex items-center justify-between text-sm text-slate-300\">
+    <div className="space-y-2 rounded-xl border border-white/10 bg-slate-800/60 p-4 shadow-sm">
+      <div className="flex items-center justify-between text-sm text-slate-300">
         <span>{title}</span>
         <span
           className={cn(
@@ -40,16 +40,16 @@ function RouteCard({ route, title }: { route: Route; title: string }) {
           {route.risk}
         </span>
       </div>
-      <h4 className=\"text-lg font-semibold text-white\">{route.name}</h4>
-      <p className=\"text-sm text-slate-300\">
-        {route.distance_miles.toFixed(1)} mi · {Math.round(route.duration_minutes)} min ETA
+      <h4 className="text-lg font-semibold text-white">{route.name}</h4>
+      <p className="text-sm text-slate-300">
+        {route.distance_miles.toFixed(1)} mi  -  {Math.round(route.duration_minutes)} min ETA
       </p>
-      <div className=\"space-y-1 text-sm text-slate-400\">
+      <div className="space-y-1 text-sm text-slate-400">
         {route.segments.map((segment) => (
-          <div key={segment.name} className=\"flex items-center justify-between\">
+          <div key={segment.name} className="flex items-center justify-between">
             <span>{segment.name}</span>
             <span>
-              {segment.distance_miles.toFixed(1)} mi · {Math.round(segment.duration_minutes)} min
+              {segment.distance_miles.toFixed(1)} mi  -  {Math.round(segment.duration_minutes)} min
             </span>
           </div>
         ))}
@@ -73,35 +73,35 @@ export default function Sidebar({
   };
 
   return (
-    <aside className=\"space-y-6 rounded-2xl border border-white/10 bg-slate-900/80 p-5 text-slate-100\">
-      <form onSubmit={handleSubmit} className=\"space-y-3\">
-        <label className=\"text-sm font-semibold text-slate-300\">Origin Address</label>
-        <div className=\"flex gap-2\">
+    <aside className="space-y-6 rounded-2xl border border-white/10 bg-slate-900/80 p-5 text-slate-100">
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <label className="text-sm font-semibold text-slate-300">Origin Address</label>
+        <div className="flex gap-2">
           <input
             value={origin}
             onChange={(event) => onOriginChange(event.target.value)}
-            placeholder=\"123 Main St, Los Angeles\"
-            className=\"w-full rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-ember focus:outline-none focus:ring-2 focus:ring-ember/40\"
+            placeholder="123 Main St, Los Angeles"
+            className="w-full rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-ember focus:outline-none focus:ring-2 focus:ring-ember/40"
           />
           <button
-            type=\"submit\"
+            type="submit"
             disabled={loading}
-            className=\"rounded-xl bg-ember px-4 text-sm font-semibold text-white transition hover:bg-orange-500 disabled:opacity-60\"
+            className="rounded-xl bg-ember px-4 text-sm font-semibold text-white transition hover:bg-orange-500 disabled:opacity-60"
           >
             {loading ? 'Loading' : 'Find Route'}
           </button>
         </div>
       </form>
 
-      <section className=\"space-y-2\">
-        <h3 className=\"text-sm font-semibold uppercase tracking-wide text-slate-400\">Overlays</h3>
-        <div className=\"space-y-2\">
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Overlays</h3>
+        <div className="space-y-2">
           {overlayOptions.map((overlay) => {
             const selected = activeOverlays.has(overlay.id);
             return (
               <button
                 key={overlay.id}
-                type=\"button\"
+                type="button"
                 onClick={() => onToggle(overlay.id)}
                 className={cn(
                   'flex w-full items-center justify-between rounded-xl border px-3 py-2 text-sm transition',
@@ -111,7 +111,7 @@ export default function Sidebar({
                 )}
               >
                 <span>{overlay.label}</span>
-                <span className=\"text-xs uppercase\">{selected ? 'On' : 'Off'}</span>
+                <span className="text-xs uppercase">{selected ? 'On' : 'Off'}</span>
               </button>
             );
           })}
@@ -119,22 +119,22 @@ export default function Sidebar({
       </section>
 
       {routeData && (
-        <section className=\"space-y-4\">
-          <h3 className=\"text-sm font-semibold uppercase tracking-wide text-slate-400\">
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
             Recommended Route
           </h3>
-          <RouteCard route={routeData.recommended} title=\"Primary\" />
+          <RouteCard route={routeData.recommended} title="Primary" />
 
           {routeData.alternatives.length > 0 && (
-            <div className=\"space-y-3\">
-              <h4 className=\"text-sm font-semibold text-slate-400\">Alternatives</h4>
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-slate-400">Alternatives</h4>
               {routeData.alternatives.map((route) => (
-                <RouteCard key={route.id} route={route} title=\"Alternate\" />
+                <RouteCard key={route.id} route={route} title="Alternate" />
               ))}
             </div>
           )}
 
-          <p className=\"text-sm text-slate-400\">
+          <p className="text-sm text-slate-400">
             Routes are calculated against the latest fire perimeters, smoke plumes, and
             transportation alerts. Manually toggle overlays to explore additional context.
           </p>
@@ -143,3 +143,4 @@ export default function Sidebar({
     </aside>
   );
 }
+

@@ -14,10 +14,17 @@ FIRE_PENALTY_MULTIPLIER = 9_999_999
 FIRE_BUFFER_DEGREES = 0.01  # ~1 km
 
 
+def _fire_geometry(fire_geojson: dict) -> dict:
+    """Accept either GeoJSON Feature or Geometry payloads."""
+    if fire_geojson.get("type") == "Feature":
+        return fire_geojson["geometry"]
+    return fire_geojson
+
+
 def _penalized_graph(fire_geojson: dict) -> nx.MultiDiGraph:
     """Return a copy of the graph with edges near the fire polygon heavily penalized."""
     G = get_graph().copy()
-    fire_shape = shape(fire_geojson["geometry"])
+    fire_shape = shape(_fire_geometry(fire_geojson))
     danger_zone = fire_shape.buffer(FIRE_BUFFER_DEGREES)
 
     for u, _v, _k, data in G.edges(data=True, keys=True):
@@ -31,7 +38,7 @@ def _penalized_graph(fire_geojson: dict) -> nx.MultiDiGraph:
 
 
 def compute_route(
-    origin: list[float],  # [lng, lat]
+    origin: list[float],       # [lng, lat]
     destination: list[float],  # [lng, lat]
     fire_geojson: dict | None = None,
 ) -> dict:
@@ -40,12 +47,13 @@ def compute_route(
     If fire_geojson is provided, roads inside/near the fire polygon are penalized.
     """
     G = _penalized_graph(fire_geojson) if fire_geojson else get_graph()
+    weight = "weight" if fire_geojson else "length"
 
     orig_node = ox.nearest_nodes(G, origin[0], origin[1])
     dest_node = ox.nearest_nodes(G, destination[0], destination[1])
 
     try:
-        path_nodes = nx.shortest_path(G, orig_node, dest_node, weight="weight")
+        path_nodes = nx.shortest_path(G, orig_node, dest_node, weight=weight)
     except nx.NetworkXNoPath:
         logger.warning("No path found from %s to %s", origin, destination)
         return {"type": "LineString", "coordinates": []}

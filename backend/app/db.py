@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# Stub — Student 3 replaces this body with a real Postgres query.
+# Stub - Student 3 replaces this body with a real Postgres query.
 # Interface is frozen: do not change the signature.
 
 
@@ -11,4 +11,4 @@ def get_fire_polygon(timestamp: str) -> dict | None:
 
     Student 3: query the fire_events table here.
     """
-    return None  # safe default — routing runs without penalty
+    return None  # safe default - routing runs without penalty
