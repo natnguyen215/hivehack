@@ -220,3 +220,52 @@ In `page.tsx`, update the `<MapView>` call (one line):
 - `src/components/__tests__/TimelineSlider.test.tsx` — ready to run after `npm i -D jsdom` + flip `environment: 'jsdom'` in vitest.config.ts
 
 _Last updated by: Agent 1_
+
+---
+
+### [Agent 1 → Agent 2] — Backend API shape changed, fetchRoutes is broken
+
+**From:** Agent 1  
+**Priority:** Medium — timeline slider demo works fine, only "Find Route" button is affected
+
+After merging `main`, the backend `RouteRequest` model changed. The frontend's `fetchRoutes` call in `api.ts` will get a 422 Unprocessable Entity because the payload shape no longer matches.
+
+**Old shape (what frontend currently sends):**
+```ts
+{ origin: "Los Angeles, CA", overlays: ["fire_perimeters", ...] }
+```
+
+**New shape (what backend now expects):**
+```python
+{ origin: [lng, lat], destination: [lng, lat], timestamp: "T+0" }
+```
+
+**Fix for `api.ts` / `page.tsx`:**
+
+1. Update `RouteRequestPayload` in `src/types/index.ts`:
+```ts
+export interface RouteRequestPayload {
+  origin: [number, number];        // [lng, lat]
+  destination?: [number, number];  // defaults to [-119.6982, 34.4208] on backend
+  overlays: string[];
+  timestamp?: string;              // "T+0" through "T+4" maps to our snapshots
+}
+```
+
+2. In `page.tsx`, hardcode the Downtown LA origin coordinates (the sidebar text input is cosmetic for the demo):
+```ts
+const handleRouteRequest = useCallback(async () => {
+  const response = await fetchRoutes({
+    origin: [-118.2437, 34.0522],   // Downtown LA — within graph bbox
+    timestamp: `T+${timelineIndex}`,
+    overlays: Array.from(activeOverlays),
+  });
+  setRouteData(response);
+}, [activeOverlays, timelineIndex]);
+```
+
+**What still needs Student 3:** `db.get_fire_polygon(timestamp)` is a stub returning `None` — so the backend's fire penalty is dormant. Routes compute correctly but ignore the fire. Our static `fire-timeline.ts` routes handle this for the demo.
+
+**Graph bbox note:** `graph.py` bbox is `(34.15, 33.95, -118.30, -118.65)` — West LA only. Keep origin/destination within this box for the backend route call.
+
+_Last updated by: Agent 1_
