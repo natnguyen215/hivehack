@@ -1,0 +1,154 @@
+{
+  "fire": {
+    "name": "Palisades Fire",
+    "unique_fire_id": "2025-CALFD-000738",
+    "county": "Los Angeles",
+    "state": "California",
+    "ignition_date": "2025-01-07",
+    "containment_date": "2025-01-31",
+    "duration_days": 25,
+    "ignition_cause": "Undetermined",
+    "ignition_location": {
+      "description": "Near Palisades Drive and Sunset Blvd, Pacific Palisades",
+      "lon": -118.526,
+      "lat": 34.049
+    },
+    "final_acres": 23448,
+    "final_acres_sq_mi": 36.6,
+    "irwin_id": "{A7EA5D21-F882-44B8-BF64-44AB11059DC1}",
+    "source": "CAL FIRE / NIFC WFIGS"
+  },
+  "progression": [
+    {
+      "timestamp": "2025-01-07T18:30:00Z",
+      "reported_acres": 10,
+      "percent_contained": 0,
+      "note": "Ignition, ~10 acres at discovery"
+    },
+    {
+      "timestamp": "2025-01-07T23:10:00Z",
+      "reported_acres": 1262,
+      "percent_contained": 0,
+      "note": "End of Day 1; explosive growth under 80 mph Santa Ana winds"
+    },
+    {
+      "timestamp": "2025-01-08T00:29:00Z",
+      "reported_acres": 2921,
+      "percent_contained": 0,
+      "note": "Crossed into Malibu overnight"
+    },
+    {
+      "timestamp": "2025-01-08T11:45:00Z",
+      "reported_acres": 11802,
+      "percent_contained": 0,
+      "note": "Mid-morning Day 2; explosive spread"
+    },
+    {
+      "timestamp": "2025-01-08T23:00:00Z",
+      "reported_acres": 17234,
+      "percent_contained": 0,
+      "note": "End of Day 2; fire reached Malibu"
+    },
+    {
+      "timestamp": "2025-01-09T20:00:00Z",
+      "reported_acres": 20000,
+      "percent_contained": 6,
+      "note": "Day 3 evening; 6% contained"
+    },
+    {
+      "timestamp": "2025-01-10T14:33:00Z",
+      "reported_acres": 21317,
+      "percent_contained": 8,
+      "note": "Day 4; winds easing; 8% contained"
+    },
+    {
+      "timestamp": "2025-01-11T09:39:00Z",
+      "reported_acres": 22660,
+      "percent_contained": 11,
+      "note": "Day 5; 11% contained; 105,000 people evacuated"
+    },
+    {
+      "timestamp": "2025-01-12T06:33:00Z",
+      "reported_acres": 23707,
+      "percent_contained": 11,
+      "note": "Day 6; growth effectively ceases"
+    },
+    {
+      "timestamp": "2025-01-21T23:43:00Z",
+      "reported_acres": 23448,
+      "percent_contained": 65,
+      "note": "Day 15; survey-corrected acreage; 65% contained"
+    },
+    {
+      "timestamp": "2025-01-30T17:35:00Z",
+      "reported_acres": 23448,
+      "percent_contained": 95,
+      "note": "Day 24; 95% contained"
+    },
+    {
+      "timestamp": "2025-01-31T00:00:00Z",
+      "reported_acres": 23448,
+      "percent_contained": 100,
+      "note": "Day 25; 100% contained"
+    }
+  ],
+  "life_safety": {
+    "fatalities": 12,
+    "injuries": 4,
+    "missing_persons_peak": 7,
+    "peak_evacuees": 105000,
+    "evacuation_order_lifted": "2025-01-27"
+  },
+  "structures": {
+    "destroyed_total": 6837,
+    "destroyed_residential": null,
+    "destroyed_commercial": null,
+    "damaged_total": 1017,
+    "note": "Destruction figures from CAL FIRE DINS final report (Jan 30)"
+  },
+  "areas_affected": [
+    "Pacific Palisades",
+    "Malibu (one-third of city)",
+    "Topanga",
+    "Mandeville Canyon",
+    "Encino (partial)",
+    "Santa Monica (partial)"
+  ],
+  "landmarks_lost": [
+    "Will Rogers State Historic Park (stables, 30 buildings)",
+    "Palisades Library branch",
+    "Palisades Elementary School (destroyed)",
+    "Marquez Elementary School (destroyed)",
+    "Palisades Charter High School (~40% damaged)",
+    "Multiple churches (4)",
+    "Pacific Palisades Business Block",
+    "Theater Palisades",
+    "Topanga Ranch Motel"
+  ],
+  "financial": {
+    "fire_suppression_cost_usd": 208946523,
+    "property_damage_estimates": {
+      "calfire_reported_usd": 25000000000,
+      "verisk_insured_loss_low_usd": 28000000000,
+      "verisk_insured_loss_high_usd": 35000000000,
+      "corelogic_insured_loss_low_usd": 35000000000,
+      "corelogic_insured_loss_high_usd": 45000000000,
+      "ucla_total_property_capital_loss_low_usd": 95000000000,
+      "ucla_total_property_capital_loss_high_usd": 164000000000,
+      "note": "Estimates vary by methodology; insured losses include FAIR Plan. UCLA figures include longer-term capital losses."
+    },
+    "insurance_claims_paid_by_jan30_2025_usd": 4200000000,
+    "state_farm_claims_paid_usd": 500000000,
+    "state_farm_claims_count": 10000,
+    "note": "This fire is expected to be the costliest in California history"
+  },
+  "sources": [
+    "CAL FIRE Incident page: https://www.fire.ca.gov/incidents/2025/1/7/palisades-fire",
+    "NIFC WFIGS: https://data-nifc.opendata.arcgis.com",
+    "Verisk estimate: https://www.insurancejournal.com/news/west/2025/01/22/809159.htm",
+    "CoreLogic estimate: https://www.cotality.com/press-releases/corelogic-estimates-the-eaton-and-palisades-fires-are-causing-devastating-initial-property-losses-estimated-to-be-between-35-billion-to-45-billion",
+    "UCLA Anderson Forecast: https://newsroom.ucla.edu/releases/los-angeles-wildfires-caused-up-to-164-billion-in-property-capital-losses",
+    "Wikipedia: https://en.wikipedia.org/wiki/Palisades_Fire",
+    "CA Insurance Commissioner Wildfire Claims Tracker: https://www.insurance.ca.gov/01-consumers/180-climate-change/Wildfire-Claims-Tracker.cfm"
+  ]
+}
