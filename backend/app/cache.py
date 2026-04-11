@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# Stub — Student 3 replaces this body with real Redis calls.
+# Stub - Student 3 replaces this body with real Redis calls.
 # Interface is frozen: do not change the signatures.
 
 
