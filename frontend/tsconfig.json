@@ -19,8 +19,7 @@
     "jsx": "preserve",
     "incremental": true,
     "types": [
-      "vite/client",
-      "@testing-library/jest-dom"
+      "vite/client"
     ],
     "plugins": [
       {
