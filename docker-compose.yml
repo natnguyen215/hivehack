@@ -1,0 +1,57 @@
+services:
+  frontend:
+    build: ./frontend
+    container_name: ember-frontend
+    environment:
+      - NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN}
+      - NEXT_PUBLIC_API_BASE_URL=http://backend:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - node_modules:/app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - ember-net
+
+  backend:
+    build: ./backend
+    container_name: ember-backend
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://ember:ember@postgres:5432/emberpath}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - ember-net
+
+  postgres:
+    image: postgis/postgis:15-3.4-alpine
+    container_name: ember-postgres
+    environment:
+      - POSTGRES_USER=ember
+      - POSTGRES_PASSWORD=ember
+      - POSTGRES_DB=emberpath
+    ports:
+      - "5432:5432"
+    networks:
+      - ember-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: ember-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - ember-net
+
+networks:
+  ember-net:
+    driver: bridge
+
+volumes:
+  node_modules:
