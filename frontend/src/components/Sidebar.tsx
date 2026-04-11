@@ -4,23 +4,7 @@ import { FormEvent, memo, useCallback, useEffect, useMemo, useRef, useState, typ
 
 import { searchPlaces } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import type { GeocodingSuggestion, Route, RouteResponse } from '@/types';
-
-type DataMode = 'live' | 'historical';
-
-type KeyIncident = {
-  id?: string;
-  name: string;
-  acres?: number | null;
-  severity?: string;
-  status?: string;
-};
-
-type FireImpact = {
-  blocked: boolean;
-  impacted_incidents: string[];
-  overlap_segments?: number | null;
-};
+import type { DataMode, FireImpact, GeocodingSuggestion, KeyIncident, MapTheme, Route, RouteResponse } from '@/types';
 
 type HistoricalNarrative = {
   title?: string;
@@ -32,8 +16,8 @@ type HistoricalNarrative = {
 type SidebarProps = {
   origin: string;
   destination: string;
-  onOriginChange: (value: string) => void;
-  onDestinationChange: (value: string) => void;
+  onOriginChange: (value: string, coords?: [number, number]) => void;
+  onDestinationChange: (value: string, coords?: [number, number]) => void;
   activeOverlays: Set<string>;
   onToggle: (id: string) => void;
   routeData: RouteResponse | null;
@@ -41,10 +25,10 @@ type SidebarProps = {
   onSubmit: () => void;
   selectedRouteId: string | null;
   onSelectRoute: (id: string) => void;
-  dataMode?: DataMode;
   mode?: DataMode;
   onModeChange?: (mode: DataMode) => void;
-  onDataModeChange?: (mode: DataMode) => void;
+  mapTheme?: MapTheme;
+  onMapThemeChange?: (theme: MapTheme) => void;
   onRefreshLiveData?: () => void;
   refreshingLiveData?: boolean;
   liveLastUpdated?: string | null;
@@ -61,9 +45,13 @@ type OverlayOption = {
 
 const overlayOptions: OverlayOption[] = [
   { id: 'fire_perimeters', label: 'Fire Perimeters', swatchClass: 'bg-red-400' },
-  { id: 'smoke_regions', label: 'Smoke Plumes', swatchClass: 'bg-slate-400' },
-  { id: 'evac_zones', label: 'Evacuation Zones', swatchClass: 'bg-orange-400' },
-  { id: 'road_closures', label: 'Road Closures', swatchClass: 'bg-amber-300' },
+];
+
+const mapThemeOptions: Array<{ id: MapTheme; label: string; swatchClass: string }> = [
+  { id: 'dark', label: 'Dark', swatchClass: 'bg-slate-900' },
+  { id: 'gray', label: 'Pure Grey', swatchClass: 'bg-neutral-500' },
+  { id: 'white', label: 'Pure White', swatchClass: 'bg-white' },
+  { id: 'color', label: 'Teal Tint', swatchClass: 'bg-cyan-400' },
 ];
 
 const riskColors: Record<string, { bg: string; text: string; border: string }> = {
@@ -160,7 +148,7 @@ function PlaceAutocomplete({
   icon,
 }: {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, coords?: [number, number]) => void;
   placeholder: string;
   label: string;
   icon: ReactNode;
@@ -252,7 +240,7 @@ function PlaceAutocomplete({
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  onChange(suggestion.place_name);
+                  onChange(suggestion.place_name, suggestion.center);
                   setOpen(false);
                   setSuggestions([]);
                 }}
@@ -280,10 +268,10 @@ function Sidebar({
   onSubmit,
   selectedRouteId,
   onSelectRoute,
-  dataMode,
   mode,
   onModeChange,
-  onDataModeChange,
+  mapTheme = 'dark',
+  onMapThemeChange,
   onRefreshLiveData,
   refreshingLiveData = false,
   liveLastUpdated,
@@ -291,8 +279,10 @@ function Sidebar({
   fireImpact,
   historicalNarrative,
 }: SidebarProps) {
-  const resolvedMode = mode ?? dataMode ?? 'live';
-  const handleModeChange = onModeChange ?? onDataModeChange;
+  const resolvedMode = mode ?? 'live';
+  const resolvedMapTheme = mapTheme;
+  const handleModeChange = onModeChange;
+  const handleMapThemeChange = onMapThemeChange;
 
   const allRoutes = useMemo(() => {
     if (!routeData) return [] as Array<{ route: Route; title: string }>;
@@ -345,6 +335,32 @@ function Sidebar({
           </div>
         </div>
 
+        <div className="mb-3 rounded-xl border border-white/10 bg-black/20 p-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Map color</p>
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            {mapThemeOptions.map((option) => {
+              const active = resolvedMapTheme === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => handleMapThemeChange?.(option.id)}
+                  className={cn(
+                    'flex items-center gap-2 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition',
+                    active
+                      ? 'border-orange-400/45 bg-orange-500/10 text-white'
+                      : 'border-white/10 bg-transparent text-slate-400 hover:border-white/20 hover:text-slate-200',
+                  )}
+                >
+                  <span className={cn('h-2 w-2 rounded-full border border-white/40', option.swatchClass)} />
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {resolvedMode === 'live' ? (
           <>
             <div className="mb-3 rounded-xl border border-white/10 bg-black/20 p-3">
@@ -376,7 +392,7 @@ function Sidebar({
                         <span className="flex-shrink-0 text-[10px] text-slate-400">
                           {typeof incident.acres === 'number'
                             ? `${Math.round(incident.acres).toLocaleString()} ac`
-                            : incident.status ?? 'Active'}
+                            : incident.display_status ?? 'Active'}
                         </span>
                       </li>
                     ))}
@@ -522,7 +538,7 @@ function Sidebar({
             ))}
           </div>
           <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-            Routes avoid active fire perimeters, smoke plumes, and closed roads. Select a route to preview on the map.
+            Routes avoid active fire perimeters. Select a route to preview on the map.
           </p>
         </div>
       )}

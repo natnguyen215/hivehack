@@ -23,6 +23,7 @@ import type {
   HistoricalSnapshot,
   KeyIncident,
   LiveUpdate,
+  MapTheme,
   Route,
   RouteGeometry,
   RouteResponse,
@@ -33,7 +34,7 @@ const MapView = dynamic(() => import('@/components/MapView'), { ssr: false });
 const TimelineSlider = dynamic(() => import('@/components/TimelineSlider'), { ssr: false });
 
 const DEFAULT_ORIGIN = 'Los Angeles, CA';
-const DEFAULT_OVERLAYS = ['evac_zones', 'fire_perimeters', 'smoke_regions', 'road_closures'] as const;
+const DEFAULT_OVERLAYS = ['fire_perimeters'] as const;
 const FALLBACK_HISTORICAL_INCIDENT: HistoricalIncident = {
   id: 'FS_Palisades_2025_CALFD_000738',
   name: 'Palisades Fire (Historical Replay)',
@@ -194,22 +195,35 @@ function normalizeHistoricalSnapshots(snapshots: HistoricalSnapshot[]): FireSnap
     }));
 }
 
-function buildHistoricalRouteData(snapshot: FireSnapshot): RouteResponse {
+function buildHistoricalRouteData(
+  snapshot: FireSnapshot,
+  snapped: Record<string, RouteGeometry>,
+): RouteResponse {
   const variant = snapshot.routeBlocked ? 'blocked' : 'clear';
   const templates = HISTORICAL_ROUTE_TEMPLATES[variant];
 
-  const routes = templates.map((template, index) => ({
-    id: template.id,
-    name: index === 0 ? snapshot.routeName : template.name,
-    distance_miles: template.distance_miles,
-    duration_minutes: template.duration_minutes,
-    risk: index === 0 ? snapshot.routeRisk : template.risk,
-    segments: [],
-    geometry: {
-      type: 'LineString',
-      coordinates: index === 0 && snapshot.routeGeometry ? snapshot.routeGeometry.coordinates : template.coordinates,
-    } satisfies RouteGeometry,
-  }));
+  const routes = templates.map((template, index) => {
+    // For the primary route (index 0), prefer the snapped snapshot geometry
+    let geometry: RouteGeometry;
+    if (index === 0) {
+      geometry = snapped[`snapshot-${snapshot.index}`]
+        ?? (snapshot.routeGeometry
+          ? (snapped[template.id] ?? snapshot.routeGeometry)
+          : (snapped[template.id] ?? { type: 'LineString', coordinates: template.coordinates }));
+    } else {
+      geometry = snapped[template.id] ?? { type: 'LineString', coordinates: template.coordinates };
+    }
+
+    return {
+      id: template.id,
+      name: index === 0 ? snapshot.routeName : template.name,
+      distance_miles: template.distance_miles,
+      duration_minutes: template.duration_minutes,
+      risk: index === 0 ? snapshot.routeRisk : template.risk,
+      segments: [],
+      geometry,
+    };
+  });
 
   return {
     recommended: routes[0],
@@ -219,8 +233,11 @@ function buildHistoricalRouteData(snapshot: FireSnapshot): RouteResponse {
 
 export default function HomePage() {
   const [mode, setMode] = useState<DataMode>('live');
+  const [mapTheme, setMapTheme] = useState<MapTheme>('dark');
   const [origin, setOrigin] = useState(DEFAULT_ORIGIN);
+  const [originCoords, setOriginCoords] = useState<[number, number] | null>(null);
   const [destination, setDestination] = useState('');
+  const [destCoords, setDestCoords] = useState<[number, number] | null>(null);
   const [activeOverlays, setActiveOverlays] = useState<Set<string>>(new Set(DEFAULT_OVERLAYS));
   const [routeData, setRouteData] = useState<RouteResponse | null>(null);
   const [statusData, setStatusData] = useState<WildfireStatus | null>(null);
@@ -237,6 +254,7 @@ export default function HomePage() {
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [snappedTemplates, setSnappedTemplates] = useState<Record<string, RouteGeometry>>({});
 
   const activeSnapshot = historicalSnapshots[timelineIndex] ?? historicalSnapshots[0] ?? null;
 
@@ -293,12 +311,83 @@ export default function HomePage() {
     })();
   }, [loadHistorical, loadLive]);
 
+  // Snap all historical route template waypoints to real roads on mount.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function snapTemplates() {
+      const allTemplates = [
+        ...HISTORICAL_ROUTE_TEMPLATES.clear,
+        ...HISTORICAL_ROUTE_TEMPLATES.blocked,
+      ];
+
+      // Deduplicate by coordinate key to avoid redundant API calls
+      const seen = new Map<string, string[]>();
+      for (const t of allTemplates) {
+        const key = JSON.stringify(t.coordinates);
+        if (!seen.has(key)) seen.set(key, []);
+        seen.get(key)!.push(t.id);
+      }
+
+      const results: Record<string, RouteGeometry> = {};
+
+      // Also snap each snapshot's primary route geometry
+      const snapshotCoords = new Map<string, number[]>();
+      for (const snap of historicalSnapshots) {
+        if (!snap.routeGeometry?.coordinates) continue;
+        const key = JSON.stringify(snap.routeGeometry.coordinates);
+        if (!snapshotCoords.has(key)) snapshotCoords.set(key, []);
+        snapshotCoords.get(key)!.push(snap.index);
+      }
+
+      await Promise.all([
+        // Snap template routes
+        ...Array.from(seen.entries()).map(async ([key, ids]) => {
+          const coords = JSON.parse(key) as [number, number][];
+          const dir = await fetchDirections(coords);
+          if (dir && !cancelled) {
+            const geom: RouteGeometry = { type: 'LineString', coordinates: dir.coordinates };
+            for (const id of ids) {
+              results[id] = geom;
+            }
+          }
+        }),
+        // Snap snapshot primary routes (keyed as "snapshot-{index}")
+        ...Array.from(snapshotCoords.entries()).map(async ([key, indices]) => {
+          const coords = JSON.parse(key) as [number, number][];
+          const dir = await fetchDirections(coords);
+          if (dir && !cancelled) {
+            const geom: RouteGeometry = { type: 'LineString', coordinates: dir.coordinates };
+            for (const idx of indices) {
+              results[`snapshot-${idx}`] = geom;
+            }
+          }
+        }),
+      ]);
+
+      if (!cancelled) setSnappedTemplates(results);
+    }
+
+    snapTemplates();
+    return () => { cancelled = true; };
+  }, [historicalSnapshots]);
+
   useEffect(() => {
     setTimelineIndex((current) => {
       if (historicalSnapshots.length === 0) return 0;
       return Math.min(current, historicalSnapshots.length - 1);
     });
   }, [historicalSnapshots.length]);
+
+  const handleOriginChange = useCallback((value: string, coords?: [number, number]) => {
+    setOrigin(value);
+    setOriginCoords(coords ?? null);
+  }, []);
+
+  const handleDestinationChange = useCallback((value: string, coords?: [number, number]) => {
+    setDestination(value);
+    setDestCoords(coords ?? null);
+  }, []);
 
   const handleToggleOverlay = useCallback((overlayId: string) => {
     setActiveOverlays((previous) => {
@@ -319,8 +408,8 @@ export default function HomePage() {
     setLoadingRoute(true);
     try {
       const response = await fetchRoutes({
-        origin,
-        destination,
+        origin: originCoords ?? origin,
+        destination: destCoords ?? destination,
         overlays: Array.from(activeOverlays),
         timestamp: new Date().toISOString(),
         mode: 'live',
@@ -351,11 +440,11 @@ export default function HomePage() {
     } finally {
       setLoadingRoute(false);
     }
-  }, [activeOverlays, destination, mode, origin]);
+  }, [activeOverlays, destination, destCoords, mode, origin, originCoords]);
 
   const historicalRouteData = useMemo(
-    () => (activeSnapshot ? buildHistoricalRouteData(activeSnapshot) : null),
-    [activeSnapshot],
+    () => (activeSnapshot ? buildHistoricalRouteData(activeSnapshot, snappedTemplates) : null),
+    [activeSnapshot, snappedTemplates],
   );
 
   const displayRouteData = mode === 'historical' ? historicalRouteData : routeData;
@@ -451,7 +540,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <div className="absolute inset-0">
+      <div className={`absolute inset-0 map-theme-${mapTheme}`}>
         <MapView
           mode={mode}
           activeOverlays={activeOverlays}
@@ -471,8 +560,8 @@ export default function HomePage() {
           <Sidebar
             origin={origin}
             destination={destination}
-            onOriginChange={setOrigin}
-            onDestinationChange={setDestination}
+            onOriginChange={handleOriginChange}
+            onDestinationChange={handleDestinationChange}
             activeOverlays={activeOverlays}
             onToggle={handleToggleOverlay}
             routeData={displayRouteData}
@@ -482,6 +571,8 @@ export default function HomePage() {
             onSelectRoute={setSelectedRouteId}
             mode={mode}
             onModeChange={setMode}
+            mapTheme={mapTheme}
+            onMapThemeChange={setMapTheme}
             onRefreshLiveData={() => {
               void loadLive();
             }}

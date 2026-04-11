@@ -4,12 +4,9 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { memo, useEffect, useRef, useState } from 'react';
 
-import { fetchOverlays } from '@/lib/api';
-import type { GeoOverlay, RouteGeometry } from '@/types';
+import type { DataMode, RouteGeometry } from '@/types';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
-
-type DataMode = 'live' | 'historical';
 
 export type RouteDisplay = {
   id: string;
@@ -23,13 +20,7 @@ type MapViewProps = {
   allRoutes?: RouteDisplay[];
   fireOverride?: GeoJSON.FeatureCollection | null;
   routeBlocked?: boolean;
-  dataMode?: DataMode;
   mode?: DataMode;
-};
-
-type OverlayPaintStyle = {
-  type: 'fill' | 'line';
-  paint: mapboxgl.FillPaint | mapboxgl.LinePaint;
 };
 
 const ROUTE_SOURCE_ID = 'route-source';
@@ -46,31 +37,6 @@ const ROUTE_COLORS = {
   blocked: '#f97316',
   unselected: '#64748b',
 } as const;
-
-const overlayPaint: Record<string, OverlayPaintStyle> = {
-  evac_zones: {
-    type: 'fill',
-    paint: {
-      'fill-color': '#fb923c',
-      'fill-opacity': 0.38,
-    },
-  },
-  smoke_regions: {
-    type: 'fill',
-    paint: {
-      'fill-color': '#94a3b8',
-      'fill-opacity': 0.28,
-    },
-  },
-  road_closures: {
-    type: 'line',
-    paint: {
-      'line-color': '#ef4444',
-      'line-width': 2,
-      'line-dasharray': [1.5, 1.5],
-    },
-  },
-};
 
 const fireFillColorExpression: any = [
   'case',
@@ -108,38 +74,6 @@ const fireFillOpacityExpression: any = [
   15000,
   0.5,
 ];
-
-function ensureOverlayLayer(map: mapboxgl.Map, overlay: GeoOverlay) {
-  const sourceId = `${overlay.id}-source`;
-  const layerId = `${overlay.id}-layer`;
-  const style = overlayPaint[overlay.id];
-  if (!style) return;
-
-  const existingSource = map.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined;
-  if (existingSource) {
-    existingSource.setData(overlay.data);
-  } else {
-    map.addSource(sourceId, { type: 'geojson', data: overlay.data });
-  }
-
-  if (!map.getLayer(layerId)) {
-    map.addLayer({
-      id: layerId,
-      type: style.type,
-      source: sourceId,
-      paint: style.paint,
-      layout: { visibility: 'none' },
-    });
-  }
-}
-
-function syncOverlayVisibility(map: mapboxgl.Map, overlayIds: string[], active: Set<string>) {
-  for (const id of overlayIds) {
-    const layerId = `${id}-layer`;
-    if (!map.getLayer(layerId)) continue;
-    map.setLayoutProperty(layerId, 'visibility', active.has(id) ? 'visible' : 'none');
-  }
-}
 
 function setFireLayerVisibility(
   map: mapboxgl.Map,
@@ -387,10 +321,9 @@ function MapView({
   allRoutes = [],
   fireOverride,
   routeBlocked = false,
-  dataMode,
-  mode,
+  mode = 'live',
 }: MapViewProps) {
-  const resolvedMode = mode ?? dataMode ?? 'live';
+  const resolvedMode = mode;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -399,8 +332,6 @@ function MapView({
   const lastBoundsKeyRef = useRef<Record<DataMode, string>>({ live: '', historical: '' });
 
   const [mapReady, setMapReady] = useState(false);
-  const [overlayIds, setOverlayIds] = useState<string[]>([]);
-  const [liveFireData, setLiveFireData] = useState<GeoJSON.FeatureCollection | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -416,30 +347,6 @@ function MapView({
 
     map.on('load', () => {
       setMapReady(true);
-
-      void (async () => {
-        try {
-          const data = await fetchOverlays();
-          const nextIds: string[] = [];
-          let nextLiveFire: GeoJSON.FeatureCollection | null = null;
-
-          for (const overlay of data.overlays) {
-            if (overlay.id === 'fire_perimeters') {
-              nextLiveFire = overlay.data;
-              continue;
-            }
-
-            ensureOverlayLayer(map, overlay);
-            nextIds.push(overlay.id);
-          }
-
-          setOverlayIds(nextIds);
-          setLiveFireData(nextLiveFire);
-        } catch {
-          setOverlayIds([]);
-          setLiveFireData(null);
-        }
-      })();
     });
 
     return () => {
@@ -448,14 +355,6 @@ function MapView({
       mapRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-
-    const visibleOverlays = resolvedMode === 'live' ? activeOverlays : new Set<string>();
-    syncOverlayVisibility(map, overlayIds, visibleOverlays);
-  }, [activeOverlays, mapReady, overlayIds, resolvedMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -478,31 +377,19 @@ function MapView({
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    const preferredLiveFireData =
-      resolvedMode === 'live' && fireOverride ? fireOverride : liveFireData;
-
-    if (preferredLiveFireData) {
+    if (resolvedMode === 'live' && fireOverride) {
       ensureFireLayers(
         map,
         LIVE_FIRE_SOURCE_ID,
         LIVE_FIRE_FILL_LAYER_ID,
         LIVE_FIRE_OUTLINE_LAYER_ID,
-        preferredLiveFireData,
-        resolvedMode === 'live' && activeOverlays.has('fire_perimeters'),
+        fireOverride,
+        activeOverlays.has('fire_perimeters'),
       );
     } else {
       setFireLayerVisibility(map, LIVE_FIRE_FILL_LAYER_ID, LIVE_FIRE_OUTLINE_LAYER_ID, false);
     }
-
-    setFireLayerVisibility(
-      map,
-      LIVE_FIRE_FILL_LAYER_ID,
-      LIVE_FIRE_OUTLINE_LAYER_ID,
-      resolvedMode === 'live'
-      && activeOverlays.has('fire_perimeters')
-      && Boolean(preferredLiveFireData),
-    );
-  }, [activeOverlays, fireOverride, liveFireData, mapReady, resolvedMode]);
+  }, [activeOverlays, fireOverride, mapReady, resolvedMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -515,28 +402,19 @@ function MapView({
         HISTORICAL_FIRE_FILL_LAYER_ID,
         HISTORICAL_FIRE_OUTLINE_LAYER_ID,
         fireOverride,
-        resolvedMode === 'historical',
+        true,
       );
     } else {
       setFireLayerVisibility(map, HISTORICAL_FIRE_FILL_LAYER_ID, HISTORICAL_FIRE_OUTLINE_LAYER_ID, false);
     }
-
-    setFireLayerVisibility(
-      map,
-      HISTORICAL_FIRE_FILL_LAYER_ID,
-      HISTORICAL_FIRE_OUTLINE_LAYER_ID,
-      resolvedMode === 'historical' && Boolean(fireOverride),
-    );
   }, [fireOverride, mapReady, resolvedMode]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    const focusData = resolvedMode === 'historical'
-      ? fireOverride
-      : (fireOverride ?? liveFireData);
-    if (!focusData) return;
+    if (!fireOverride) return;
+    const focusData = fireOverride;
 
     const bounds = getPolygonBounds(focusData);
     if (!bounds) return;
@@ -550,7 +428,7 @@ function MapView({
       duration: 600,
       maxZoom: 11,
     });
-  }, [liveFireData, fireOverride, mapReady, resolvedMode]);
+  }, [fireOverride, mapReady, resolvedMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -597,7 +475,7 @@ function MapView({
       }
       popup.remove();
     };
-  }, [liveFireData, fireOverride, mapReady]);
+  }, [fireOverride, mapReady]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }
