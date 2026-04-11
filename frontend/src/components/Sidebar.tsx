@@ -16,10 +16,10 @@ type SidebarProps = {
 };
 
 const overlayOptions = [
-  { id: 'fire_perimeters', label: 'Fire' },
-  { id: 'smoke_regions', label: 'Smoke' },
-  { id: 'evac_zones', label: 'Evac Zones' },
-  { id: 'road_closures', label: 'Road Closures' },
+  { id: 'fire_perimeters', label: 'Fire Perimeters', icon: '🔥' },
+  { id: 'smoke_regions', label: 'Smoke Regions', icon: '💨' },
+  { id: 'evac_zones', label: 'Evac Zones', icon: '⚠️' },
+  { id: 'road_closures', label: 'Road Closures', icon: '🚧' },
 ];
 
 function RouteCard({ route, title }: { route: Route; title: string }) {
@@ -42,14 +42,14 @@ function RouteCard({ route, title }: { route: Route; title: string }) {
       </div>
       <h4 className="text-lg font-semibold text-white">{route.name}</h4>
       <p className="text-sm text-slate-300">
-        {route.distance_miles.toFixed(1)} mi  -  {Math.round(route.duration_minutes)} min ETA
+        {route.distance_miles.toFixed(1)} mi &nbsp;·&nbsp; {Math.round(route.duration_minutes)} min ETA
       </p>
       <div className="space-y-1 text-sm text-slate-400">
         {route.segments.map((segment) => (
           <div key={segment.name} className="flex items-center justify-between">
             <span>{segment.name}</span>
             <span>
-              {segment.distance_miles.toFixed(1)} mi  -  {Math.round(segment.duration_minutes)} min
+              {segment.distance_miles.toFixed(1)} mi · {Math.round(segment.duration_minutes)} min
             </span>
           </div>
         ))}
@@ -73,28 +73,41 @@ export default function Sidebar({
   };
 
   return (
-    <aside className="space-y-6 rounded-2xl border border-white/10 bg-slate-900/80 p-5 text-slate-100">
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <label className="text-sm font-semibold text-slate-300">Origin Address</label>
-        <div className="flex gap-2">
-          <input
-            value={origin}
-            onChange={(event) => onOriginChange(event.target.value)}
-            placeholder="123 Main St, Los Angeles"
-            className="w-full rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-ember focus:outline-none focus:ring-2 focus:ring-ember/40"
-          />
+    <aside className="space-y-6 rounded-2xl border border-white/10 bg-slate-900/80 p-5 text-slate-100 overflow-y-auto">
+      <div>
+        <h2 className="mb-3 text-base font-bold text-white">Route Planner</h2>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">From</label>
+            <div className="flex gap-2">
+              <input
+                value={origin}
+                onChange={(event) => onOriginChange(event.target.value)}
+                placeholder="123 Main St, Los Angeles"
+                className="w-full rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-ember focus:outline-none focus:ring-2 focus:ring-ember/40"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">To</label>
+            <div className="rounded-xl border border-white/10 bg-slate-800/50 px-3 py-2 text-sm text-slate-400">
+              Santa Barbara, CA <span className="text-xs text-slate-600">(fixed destination)</span>
+            </div>
+          </div>
           <button
             type="submit"
             disabled={loading}
-            className="rounded-xl bg-ember px-4 text-sm font-semibold text-white transition hover:bg-orange-500 disabled:opacity-60"
+            className="w-full rounded-xl bg-ember py-2 text-sm font-semibold text-white transition hover:bg-orange-500 disabled:opacity-60"
           >
-            {loading ? 'Loading' : 'Find Route'}
+            {loading ? 'Calculating…' : 'Find Safe Route'}
           </button>
-        </div>
-      </form>
+        </form>
+      </div>
+
+      <hr className="border-white/10" />
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Overlays</h3>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Map Overlays</h3>
         <div className="space-y-2">
           {overlayOptions.map((overlay) => {
             const selected = activeOverlays.has(overlay.id);
@@ -110,8 +123,18 @@ export default function Sidebar({
                     : 'border-white/10 bg-transparent text-slate-400 hover:border-ember/60'
                 )}
               >
-                <span>{overlay.label}</span>
-                <span className="text-xs uppercase">{selected ? 'On' : 'Off'}</span>
+                <span className="flex items-center gap-2">
+                  <span>{overlay.icon}</span>
+                  <span>{overlay.label}</span>
+                </span>
+                <span
+                  className={cn(
+                    'rounded-full px-2 py-0.5 text-xs font-semibold uppercase',
+                    selected ? 'bg-ember/20 text-orange-200' : 'text-slate-500'
+                  )}
+                >
+                  {selected ? 'On' : 'Off'}
+                </span>
               </button>
             );
           })}
@@ -119,6 +142,8 @@ export default function Sidebar({
       </section>
 
       {routeData && (
+        <>
+        <hr className="border-white/10" />
         <section className="space-y-4">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
             Recommended Route
@@ -134,11 +159,12 @@ export default function Sidebar({
             </div>
           )}
 
-          <p className="text-sm text-slate-400">
+          <p className="text-xs text-slate-500">
             Routes are calculated against the latest fire perimeters, smoke plumes, and
-            transportation alerts. Manually toggle overlays to explore additional context.
+            transportation alerts. Toggle overlays above to explore additional context.
           </p>
         </section>
+        </>
       )}
     </aside>
   );

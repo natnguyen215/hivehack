@@ -27,12 +27,18 @@ export default function StatusBanner({ status, updates }: StatusBannerProps) {
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-wide opacity-80">Current Advisory</p>
-          <p className="text-lg font-semibold leading-tight md:text-xl">{advisory}</p>
+          <p className="text-xs uppercase tracking-widest opacity-70">Current Advisory</p>
+          <p className="mt-0.5 text-lg font-bold leading-tight md:text-xl">{advisory}</p>
           {status && (
-            <p className="text-sm opacity-80">
-              {status.active_fires} active fires  -  Counties: {status.counties.join(', ')}
-            </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm opacity-90">
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-semibold">
+                🔥 {status.active_fires} active fires
+              </span>
+              <span className="opacity-60">·</span>
+              <span className="text-xs">{status.counties.join(', ')}</span>
+              <span className="opacity-40">·</span>
+              <span className="text-xs opacity-70">Updated {status.updated_at}</span>
+            </div>
           )}
         </div>
         {updates.length > 0 && (

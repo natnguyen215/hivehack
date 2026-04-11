@@ -1,0 +1,74 @@
+This is a phenomenal, highly technical project that perfectly fits the Harvey Mudd DNA: it is algorithmically interesting, tackles a massive localized problem, and avoids the "slop startup" trap. 
+
+However, a 5-hour hackathon is a ruthless sprint. You do not have time to build a production app. You have time to build a **provable prototype** that clearly demonstrates the algorithm and visualizes the solution. Since you will be leveraging AI coding assistants, you can move fast, but you must strictly limit your scope to a "replay demo" using historical data. 
+
+Here is your comprehensive, concrete battle plan to execute this in 5 hours.
+
+---
+
+### **1. Core Features to Develop**
+
+Focus exclusively on proving that your routing logic works against dynamic danger zones. 
+
+* **The Hazard Map UI:** A web-based map interface that renders a base layer of roads and overlays historical fire perimeters (polygons) as a visual "danger zone."
+* **The Dynamic Evacuation Algorithm:** A routing backend that takes a starting coordinate and an ending coordinate, then calculates a path using an altered Dijkstra or A* algorithm. The algorithm must heavily penalize or sever edges (roads) that intersect with or are immediately adjacent to the active fire polygon. 
+* **The Timeline "Replay" Slider:** A slider at the bottom of the screen that steps through a 24-hour period of the 2025 LA fires. As the user drags the slider, the fire polygon grows, and the suggested evacuation route recalculates in real-time to avoid the new perimeter.
+
+---
+
+### **2. Execution Timeline & Division of Labor (The 5-Hour Sprint)**
+
+Divide your three-person undergraduate team into distinct roles: **The Mapper (Frontend), The Math (Backend/Algo), and The Story (Data/Integration/Pitch).** **Hour 1: Boilerplate, Data Prep, and API Keys**
+* **The Mapper:** Generate the frontend boilerplate using AI (React/Next.js or just vanilla HTML/JS for speed). Set up Mapbox GL JS or Leaflet. Get the map rendering on the screen.
+* **The Math:** Ask an AI model to generate a Python backend (FastAPI or Flask) and a script to pull a road network graph for a small bounded box in Los Angeles (using the `osmnx` library).
+* **The Story:** Go to NASA FIRMS or CalFire archives. Download the GeoJSON data for a specific 2025 LA fire (like the Palisades or Eaton fire). Clean the data using AI, creating 4 or 5 static JSON files representing the fire's perimeter at different timestamps.
+
+**Hour 2: The Core Logic and Visualization**
+* **The Mapper:** Use AI to write the code that parses The Story's GeoJSON files and draws red polygons on the map.
+* **The Math:** Implement the routing algorithm. Prompt an AI to write a function that takes the `osmnx` road graph and increases the traversal cost (weight) of any road node inside or within 1 mile of the provided fire polygon. 
+* **The Story:** Write the core pitch deck (Problem, Solution, Market, Tech Stack). Begin gathering statistics on insurance payouts and property loss from the 2025 fires.
+
+**Hour 3: Integration (The Hard Part)**
+* **The Mapper & The Math:** Connect the frontend to the backend. The frontend sends the start/end coordinates and the current "timestamp" to the backend. The backend returns the safe route. AI is highly effective here for debugging CORS errors and writing standard `fetch` requests. 
+* **The Story:** Step in to help debug. Start designing the UI overlay—a simple sidebar that says "Standard Route: Blocked. Rerouting away from hazard zone."
+
+**Hour 4: The Replay Slider & Polish**
+* **The Mapper:** Build the timeline slider. When the slider moves, it updates the map's active fire polygon and requests a new route from the backend. 
+* **The Math:** Optimize the routing response time. If calculating the graph takes too long, pre-compute the 5 routes for the 5 slider timestamps and hardcode the responses. **(Hackathon survival tactic: hardcoding the demo is completely acceptable if you have the real script to prove the math works).**
+* **The Story:** Finalize the 3-minute pitch. Practice the live demo flow.
+
+**Hour 5: Buffer & Rehearsal**
+* **All Hands:** Stop coding. Record a backup video of the demo working perfectly. Practice the pitch aloud at least three times. Ensure the transition between the slides and the technical demo is seamless.
+
+---
+
+### **3. Data Sources**
+
+Do not attempt to wire up live APIs during a 5-hour hackathon. Pull static data, clean it, and serve it locally.
+
+* **Fire Perimeters:** NASA FIRMS (Fire Information for Resource Management System) provides an archive of thermal hotspot data. Alternatively, the **CalFire open data portal** provides historical perimeter shapefiles. 
+* **Road Networks:** Use the Python library **`osmnx`**. It lets you download OpenStreetMap street networks for specific bounding boxes and turns them into mathematically routable NetworkX graphs in just two lines of code. 
+* **Mapping UI:** **Mapbox GL JS** is the industry standard for fast, custom data overlays. It handles GeoJSON polygons natively and beautifully.
+
+---
+
+### **4. Prioritization Strategy**
+
+* **Crucial:** A map showing a red fire zone and a green evacuation route that explicitly avoids the red zone. If you only accomplish this, you still have a viable project.
+* **Important:** The slider that shows the fire moving and the route dynamically snapping to a safer road. This is the "wow" factor.
+* **Ignore:** Live traffic data, wind vector physics, mobile responsiveness, user login, and live API polling. You do not have time for these; mention them in the pitch as "Next Steps."
+
+---
+
+### **5. The Pitch & Industry Financial Gains**
+
+Your pitch needs to prove that this isn't just a humanitarian tool—it is a financial necessity for major industries. Industry friction in disaster response costs billions.
+
+**The Hook:**
+"During the January 2025 Los Angeles fires, residents fleeing their homes opened standard navigation apps and were routed directly toward the advancing flames. Standard maps prioritize traffic and road closures, but they do not model dynamic environmental hazards. We built the Wildfire Evacuation Router to fix this."
+
+**The Financial Beneficiaries:**
+
+* **Property & Casualty Insurance Providers:** Companies like State Farm and Allstate are hemorrhaging money and pulling out of high-risk states due to multi-billion dollar wildfire payouts. A tool that safely and efficiently routes heavy fire apparatus (engines, bulldozers) to defend high-value properties—without getting trapped—reduces total property loss. Furthermore, dynamic hazard routing can be bundled into homeowner insurance apps to mitigate loss of life liability and vehicle claims.
+* **Emergency Management & Municipalities:** Cal OES and local sheriff's departments spend millions on static evacuation planning and traffic control during disasters. When citizens self-evacuate using outdated routes, it creates gridlock, forcing cities to deploy expensive aerial rescues and tying up emergency personnel. Dynamic routing optimizes the flow of civilian traffic away from danger, saving millions in emergency operational costs.
+* **Fleet Logistics & Freight:** Amazon, UPS, and local supply chains lose millions in perishable goods, destroyed vehicles, and delayed logistics when trucks unknowingly drive into expanding hazard zones. Integrating real-time fire perimeter weights into commercial routing algorithms preserves physical assets and supply chain continuity.

@@ -14,6 +14,11 @@ const TimelineSlider = dynamic(() => import('@/components/TimelineSlider'), { ss
 
 const DEFAULT_OVERLAYS = ['evac_zones', 'fire_perimeters', 'smoke_regions', 'road_closures'];
 
+// Fixed origin: Downtown LA [lng, lat]. The text input is a display label only —
+// geocoding is out of scope for the demo.
+const ORIGIN_COORDS: [number, number] = [-118.2437, 34.0522];
+const DESTINATION_COORDS: [number, number] = [-119.6982, 34.4208]; // Santa Barbara
+
 export default function HomePage() {
   const [origin, setOrigin] = useState('Los Angeles, CA');
   const [activeOverlays, setActiveOverlays] = useState<Set<string>>(new Set(DEFAULT_OVERLAYS));
@@ -50,17 +55,21 @@ export default function HomePage() {
   );
 
   const handleRouteRequest = useCallback(async () => {
-    if (!origin.trim()) return;
     setLoadingRoute(true);
     try {
-      const response = await fetchRoutes({ origin, overlays: Array.from(activeOverlays) });
+      const response = await fetchRoutes({
+        origin: ORIGIN_COORDS,
+        destination: DESTINATION_COORDS,
+        overlays: Array.from(activeOverlays),
+        timestamp: activeSnapshot.label,
+      });
       setRouteData(response);
     } catch (error) {
       console.error('Failed to fetch route', error);
     } finally {
       setLoadingRoute(false);
     }
-  }, [activeOverlays, origin]);
+  }, [activeOverlays, activeSnapshot.label]);
 
   useEffect(() => {
     handleRouteRequest();
@@ -82,25 +91,41 @@ export default function HomePage() {
   }), [activeSnapshot]);
 
   return (
-    <main className="space-y-4 p-6">
-      <StatusBanner status={statusData} updates={updates} />
-      <div className="grid grid-cols-[380px_1fr] gap-4">
-        <Sidebar
-          origin={origin}
-          onOriginChange={setOrigin}
-          activeOverlays={activeOverlays}
-          onToggle={handleToggle}
-          routeData={timelineRouteData}
-          loading={loadingRoute}
-          onSubmit={handleRouteRequest}
-        />
-        <div className="rounded-xl border border-white/10 bg-slate-900 p-2">
-          <MapView
+    <div className="flex min-h-screen flex-col bg-[#0b1120]">
+      {/* Header */}
+      <header className="flex items-center justify-between border-b border-white/10 bg-slate-900/80 px-6 py-3 backdrop-blur">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">🔥</span>
+          <div>
+            <h1 className="text-lg font-bold leading-none tracking-tight text-white">EmberPath</h1>
+            <p className="text-xs text-slate-400">Wildfire Evacuation Router</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" />
+          <span className="text-xs font-semibold text-red-300">Live Monitoring</span>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="flex flex-1 flex-col gap-4 p-5">
+        <StatusBanner status={statusData} updates={updates} />
+        <div className="grid flex-1 grid-cols-[380px_1fr] gap-4">
+          <Sidebar
+            origin={origin}
+            onOriginChange={setOrigin}
             activeOverlays={activeOverlays}
-            routeGeometry={routeGeometry}
-            fireOverride={activeSnapshot.geojson}
+            onToggle={handleToggle}
+            routeData={timelineRouteData}
+            loading={loadingRoute}
+            onSubmit={handleRouteRequest}
           />
-          <div className="mt-2">
+          <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-slate-900 p-2">
+            <MapView
+              activeOverlays={activeOverlays}
+              routeGeometry={routeGeometry}
+              fireOverride={activeSnapshot.geojson}
+            />
             <TimelineSlider
               snapshots={FIRE_SNAPSHOTS}
               activeIndex={timelineIndex}
@@ -108,7 +133,7 @@ export default function HomePage() {
             />
           </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }

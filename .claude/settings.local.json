@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(git:*)",
+      "Skill(update-config)",
+      "Bash(gh pr:*)",
+      "Bash(winget list:*)",
+      "Bash(where gh:*)",
+      "Bash(.venv/Scripts/uvicorn app.main:app --reload --port 8001)",
+      "Bash(.venv/Scripts/pip install:*)",
+      "Bash(.venv/Scripts/pip3.exe install:*)",
+      "Bash(.venv/Scripts/uvicorn.exe app.main:app --reload --port 8001)",
+      "Bash(claude mcp:*)"
+    ]
+  }
+}

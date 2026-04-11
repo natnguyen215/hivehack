@@ -55,8 +55,10 @@ export interface LiveUpdate {
 }
 
 export interface RouteRequestPayload {
-  origin: string;
+  origin: [number, number];       // [lng, lat]
+  destination?: [number, number]; // [lng, lat] — backend defaults to Santa Barbara
   overlays: string[];
+  timestamp?: string;             // fire snapshot label, e.g. "Jan 7 · 06:00"
 }
 
 export interface FireSnapshot {
