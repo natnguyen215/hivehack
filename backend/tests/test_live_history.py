@@ -61,6 +61,53 @@ def test_get_live_uses_live_perimeters(monkeypatch) -> None:
     assert response.fetched_at.endswith("Z")
 
 
+def test_get_status_uses_live_fire_count(monkeypatch) -> None:
+    monkeypatch.setattr(
+        main,
+        "fetch_live_fire_perimeters",
+        lambda: {
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature"}, {"type": "Feature"}],
+        },
+    )
+
+    response = main.get_status()
+
+    assert response.active_fires == 2
+    assert response.updated_at.endswith("Z")
+
+
+def test_get_overlays_uses_live_fire_perimeters(monkeypatch) -> None:
+    fire_feature_collection = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"id": "inc-1", "name": "Blue", "acres": 15.53, "severity": "low"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [-118.45, 34.05],
+                            [-118.35, 34.05],
+                            [-118.35, 34.12],
+                            [-118.45, 34.12],
+                            [-118.45, 34.05],
+                        ]
+                    ],
+                },
+            }
+        ],
+    }
+    monkeypatch.setattr(main, "fetch_live_fire_perimeters", lambda: fire_feature_collection)
+    monkeypatch.setattr(main, "fetch_smoke_plumes", lambda: {"type": "FeatureCollection", "features": []})
+
+    response = main.get_overlays()
+
+    fire_overlay = next(overlay for overlay in response.overlays if overlay.id == "fire_perimeters")
+    assert fire_overlay.data == fire_feature_collection
+
+
 def test_fetch_live_fire_perimeters_limits_query_to_california(monkeypatch) -> None:
     requested_url: dict[str, str] = {}
 

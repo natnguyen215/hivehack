@@ -209,6 +209,27 @@ function extractOverlay(overlays: GeoOverlay[], id: string): GeoJSON.FeatureColl
   return (overlay?.data as GeoJSON.FeatureCollection) ?? null;
 }
 
+function buildKeyIncidentsFromOverlay(fireOverlay: GeoJSON.FeatureCollection | null): KeyIncident[] {
+  if (!fireOverlay) return [];
+
+  const incidents = fireOverlay.features.map((feature, index) => {
+    const props = (feature.properties ?? {}) as Record<string, unknown>;
+    const rawAcres = Number(props.acres ?? props.GISAcres ?? 0);
+
+    return {
+      id: String(props.id ?? feature.id ?? `incident-${index}`),
+      name: String(props.name ?? props.IncidentName ?? 'Unnamed Incident'),
+      acres: Number.isFinite(rawAcres) ? rawAcres : 0,
+      severity: String(props.severity ?? 'low'),
+      updated_at: typeof props.updated_at === 'string' ? props.updated_at : null,
+      display_status: typeof props.display_status === 'string' ? props.display_status : null,
+    };
+  });
+
+  incidents.sort((a, b) => b.acres - a.acres);
+  return incidents.slice(0, 20);
+}
+
 function normalizeHistoricalSnapshots(snapshots: HistoricalSnapshot[]): FireSnapshot[] {
   return [...snapshots]
     .sort((a, b) => a.index - b.index)
@@ -295,19 +316,27 @@ export default function HomePage() {
     setRefreshingLive(true);
     try {
       const live = await fetchLiveData();
+      const fireOverlay = extractOverlay(live.overlays, 'fire_perimeters');
+      const fallbackIncidents = buildKeyIncidentsFromOverlay(fireOverlay);
+      const effectiveKeyIncidents = live.key_incidents.length > 0 ? live.key_incidents : fallbackIncidents;
+      const effectiveActiveFires = fireOverlay?.features.length ?? effectiveKeyIncidents.length ?? live.status.active_fires;
+
       setStatusData(live.status);
       setUpdates(live.updates);
-      setKeyIncidents(live.key_incidents);
+      setKeyIncidents(effectiveKeyIncidents);
       setLiveFetchedAt(live.fetched_at);
-      setLiveFireOverride(extractOverlay(live.overlays, 'fire_perimeters'));
+      setLiveFireOverride(fireOverlay);
       setLiveEvacData(extractOverlay(live.overlays, 'evacuation_zones'));
       setLiveSmokeData(extractOverlay(live.overlays, 'smoke_plumes'));
+      setStatusData({ ...live.status, active_fires: effectiveActiveFires });
     } catch {
       const [statusResult, updatesResult, overlaysResult] = await Promise.allSettled([
         fetchStatus(),
         fetchUpdates(),
         fetchOverlays(),
       ]);
+
+      let fallbackFireOverlay: GeoJSON.FeatureCollection | null = null;
 
       if (statusResult.status === 'fulfilled') {
         setStatusData(statusResult.value);
@@ -317,7 +346,8 @@ export default function HomePage() {
       }
       if (overlaysResult.status === 'fulfilled') {
         const overlays = overlaysResult.value.overlays;
-        setLiveFireOverride(extractOverlay(overlays, 'fire_perimeters'));
+        fallbackFireOverlay = extractOverlay(overlays, 'fire_perimeters');
+        setLiveFireOverride(fallbackFireOverlay);
         setLiveEvacData(extractOverlay(overlays, 'evacuation_zones'));
         setLiveSmokeData(extractOverlay(overlays, 'smoke_plumes'));
       } else {
@@ -326,7 +356,14 @@ export default function HomePage() {
         setLiveSmokeData(null);
       }
 
-      setKeyIncidents([]);
+      const fallbackKeyIncidents = buildKeyIncidentsFromOverlay(fallbackFireOverlay);
+      setKeyIncidents(fallbackKeyIncidents);
+      if (statusResult.status === 'fulfilled' && fallbackFireOverlay) {
+        setStatusData({
+          ...statusResult.value,
+          active_fires: fallbackFireOverlay.features.length,
+        });
+      }
       setLiveFetchedAt(new Date().toISOString());
     } finally {
       setRefreshingLive(false);

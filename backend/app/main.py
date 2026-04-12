@@ -381,7 +381,18 @@ def health() -> dict[str, str]:
 
 @app.get("/api/status", response_model=WildfireStatus)
 def get_status() -> WildfireStatus:
-    return WildfireStatus(**WILDFIRE_STATUS)
+    fetched_at = _utc_now_iso()
+    try:
+        fire_feature_collection = fetch_live_fire_perimeters()
+        status_payload = {
+            **WILDFIRE_STATUS,
+            "active_fires": len(fire_feature_collection.get("features", [])),
+            "updated_at": fetched_at,
+        }
+        return WildfireStatus(**status_payload)
+    except Exception as exc:
+        logger.warning("Status endpoint falling back to mock payload: %s", exc)
+        return WildfireStatus(**{**WILDFIRE_STATUS, "updated_at": fetched_at})
 
 
 @app.post("/api/routes", response_model=RouteResponse)
@@ -438,8 +449,21 @@ def get_routes(request: RouteRequest) -> RouteResponse:
 
 @app.get("/api/overlays", response_model=OverlaysResponse)
 def get_overlays() -> OverlaysResponse:
-    overlays = [GeoOverlay(**payload) for payload in OVERLAY_GEOJSON.values()]
-    return OverlaysResponse(overlays=overlays)
+    try:
+        fire_feature_collection = fetch_live_fire_perimeters()
+        smoke_feature_collection: dict[str, Any] | None = None
+        try:
+            smoke_feature_collection = fetch_smoke_plumes()
+        except Exception as smoke_exc:
+            logger.warning("Smoke plume fetch failed for overlays endpoint: %s", smoke_exc)
+
+        return OverlaysResponse(
+            overlays=_live_overlays(fire_feature_collection, smoke_feature_collection)
+        )
+    except Exception as exc:
+        logger.warning("Overlays endpoint falling back to mock payload: %s", exc)
+        overlays = [GeoOverlay(**payload) for payload in OVERLAY_GEOJSON.values()]
+        return OverlaysResponse(overlays=overlays)
 
 
 @app.get("/api/updates", response_model=list[LiveUpdate])
