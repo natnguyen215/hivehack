@@ -19,11 +19,17 @@ LIVE_PERIMETERS_URL = (
     "https://services9.arcgis.com/RHVPKKiFTONKtxq3/ArcGIS/rest/services/"
     "USA_Wildfires_v1/FeatureServer/1/query"
 )
+NOAA_HMS_SMOKE_URL = (
+    "https://services9.arcgis.com/RHVPKKiFTONKtxq3/ArcGIS/rest/services/"
+    "NOAA_Smoke_Polygons/FeatureServer/0/query"
+)
 CALIFORNIA_BBOX = "-124.48,32.53,-114.13,42.01"
+USA_BBOX = "-125.0,24.0,-66.0,50.0"
 LIVE_FIELDS = (
     "OBJECTID,IncidentName,GISAcres,DateCurrent,CurrentDateAge,IRWINID,"
     "IncidentTypeCategory"
 )
+SMOKE_FIELDS = "OBJECTID,Density,Satellite,Start,End"
 
 
 def _http_get_json(url: str, timeout_seconds: float = 9.0) -> dict[str, Any]:
@@ -179,11 +185,11 @@ def _normalize_feature(feature: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def fetch_live_fire_perimeters(
-    record_count: int = 80,
-    timeout_seconds: float = 9.0,
+    record_count: int = 200,
+    timeout_seconds: float = 12.0,
 ) -> dict[str, Any]:
     params = {
-        "where": "IncidentTypeCategory='WF' AND CurrentDateAge<=2",
+        "where": "IncidentTypeCategory='WF'",
         "outFields": LIVE_FIELDS,
         "returnGeometry": "true",
         "f": "geojson",
@@ -214,9 +220,131 @@ def fetch_live_fire_perimeters(
     return {"type": "FeatureCollection", "features": normalized}
 
 
+def _smoke_density_label(value: Any) -> str:
+    raw = str(value).strip().lower() if value else ""
+    if raw in ("heavy", "dense"):
+        return "heavy"
+    if raw in ("medium", "moderate"):
+        return "medium"
+    return "light"
+
+
+def _normalize_smoke_feature(feature: dict[str, Any]) -> dict[str, Any] | None:
+    geometry = feature.get("geometry")
+    if not geometry:
+        return None
+
+    normalized_geometry = _normalize_geometry(geometry)
+    simplified_geometry = _simplify_geometry(normalized_geometry, tolerance=0.002)
+
+    props = feature.get("properties", {})
+    density = _smoke_density_label(props.get("Density") or props.get("density"))
+    satellite = str(props.get("Satellite") or props.get("satellite") or "Unknown")
+    observed_at = _to_iso_utc(
+        props.get("Start") or props.get("start") or props.get("CreateDate")
+    )
+
+    return {
+        "type": "Feature",
+        "geometry": simplified_geometry,
+        "properties": {
+            "name": f"{density.title()} Smoke",
+            "density": density,
+            "satellite": satellite,
+            "observed_at": observed_at,
+        },
+    }
+
+
+def fetch_smoke_plumes(
+    record_count: int = 100,
+    timeout_seconds: float = 10.0,
+) -> dict[str, Any]:
+    params = {
+        "where": "1=1",
+        "outFields": SMOKE_FIELDS,
+        "returnGeometry": "true",
+        "f": "geojson",
+        "resultRecordCount": str(record_count),
+        "outSR": "4326",
+        "geometry": USA_BBOX,
+        "geometryType": "esriGeometryEnvelope",
+        "inSR": "4326",
+        "spatialRel": "esriSpatialRelIntersects",
+    }
+    url = f"{NOAA_HMS_SMOKE_URL}?{urlencode(params)}"
+    raw = _http_get_json(url, timeout_seconds=timeout_seconds)
+
+    features = raw.get("features", [])
+    normalized: list[dict[str, Any]] = []
+    for feature in features:
+        parsed = _normalize_smoke_feature(feature)
+        if parsed is None:
+            continue
+        normalized.append(parsed)
+
+    return {"type": "FeatureCollection", "features": normalized}
+
+
+def build_evacuation_zones(
+    fire_feature_collection: dict[str, Any],
+) -> dict[str, Any]:
+    """Build evacuation zone polygons by buffering active fire perimeters.
+
+    Uses Shapely to create a buffer around each fire perimeter, simulating
+    evacuation zones.  Falls back to empty when Shapely is unavailable.
+    """
+    if shape is None or mapping is None:
+        return {"type": "FeatureCollection", "features": []}
+
+    features: list[dict[str, Any]] = []
+    for fire_feature in fire_feature_collection.get("features", []):
+        fire_geom = fire_feature.get("geometry")
+        if not fire_geom:
+            continue
+
+        fire_props = fire_feature.get("properties", {})
+        acres = _safe_float(fire_props.get("acres"), 0.0)
+        incident_name = str(fire_props.get("name") or "Unnamed Incident")
+
+        try:
+            shapely_geom = shape(fire_geom)
+        except Exception:
+            continue
+
+        if shapely_geom.is_empty:
+            continue
+
+        # Buffer distance scales with fire size (in degrees, ~0.01 ≈ 1km)
+        buffer_deg = 0.02 if acres < 5000 else 0.04 if acres < 20000 else 0.06
+        status = "voluntary" if acres < 5000 else "mandatory"
+
+        try:
+            zone_geom = shapely_geom.buffer(buffer_deg)
+            if zone_geom.is_empty:
+                continue
+            zone_dict = mapping(zone_geom)
+        except Exception:
+            continue
+
+        features.append({
+            "type": "Feature",
+            "geometry": _simplify_geometry(zone_dict, tolerance=0.001),
+            "properties": {
+                "name": f"{incident_name} Evacuation Zone",
+                "zone_id": str(fire_props.get("id", incident_name)),
+                "status": status,
+                "acres": acres,
+                "issued_at": fire_props.get("updated_at"),
+            },
+        })
+
+    return {"type": "FeatureCollection", "features": features}
+
+
 def key_incidents_from_feature_collection(
     feature_collection: dict[str, Any],
-    max_items: int = 6,
+    max_items: int = 20,
 ) -> list[dict[str, Any]]:
     incidents: list[dict[str, Any]] = []
     for feature in feature_collection.get("features", []):

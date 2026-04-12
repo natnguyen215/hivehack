@@ -44,7 +44,9 @@ try:
 except Exception:  # pragma: no cover - optional heavy dep path
     routing = None
 from .fire_data import (
+    build_evacuation_zones,
     fetch_live_fire_perimeters,
+    fetch_smoke_plumes,
     key_incidents_from_feature_collection,
 )
 from .historical_data import load_palisades_history
@@ -153,9 +155,38 @@ def _serialize_route_option(option: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _mock_route_options() -> list[dict[str, Any]]:
+def _parse_coords(value: Any) -> list[float] | None:
+    """Extract [lng, lat] from a coordinate pair. Returns None for string addresses."""
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            return [float(value[0]), float(value[1])]
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _mock_route_options(
+    origin: Any = None,
+    destination: Any = None,
+) -> list[dict[str, Any]]:
+    origin_coords = _parse_coords(origin)
+    dest_coords = _parse_coords(destination)
+
     def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
         geometry = payload.get("geometry", {})
+        coords = [list(c) for c in geometry.get("coordinates", [])]
+
+        # Replace start/end coordinates with user-provided origin/destination
+        if coords:
+            if origin_coords:
+                coords[0] = origin_coords
+            if dest_coords:
+                coords[-1] = dest_coords
+
+        patched_geometry = {
+            "type": geometry.get("type", "LineString"),
+            "coordinates": coords,
+        }
         return {
             "id": str(payload.get("id", "mock-route")),
             "name": str(payload.get("name", "Fallback Route")),
@@ -163,9 +194,9 @@ def _mock_route_options() -> list[dict[str, Any]]:
             "duration_minutes": float(payload.get("duration_minutes", 0.0)),
             "risk": str(payload.get("risk", "moderate")),
             "segments": payload.get("segments", []),
-            "geometry": geometry,
-            "type": geometry.get("type", "LineString"),
-            "coordinates": geometry.get("coordinates", []),
+            "geometry": patched_geometry,
+            "type": patched_geometry["type"],
+            "coordinates": patched_geometry["coordinates"],
         }
 
     options = [_normalize(MOCK_ROUTES["recommended"])]
@@ -281,12 +312,20 @@ def _detect_fire_impact(
     )
 
 
-def _live_overlays(fire_feature_collection: dict[str, Any]) -> list[GeoOverlay]:
+def _live_overlays(
+    fire_feature_collection: dict[str, Any],
+    smoke_feature_collection: dict[str, Any] | None = None,
+) -> list[GeoOverlay]:
     overlays: list[GeoOverlay] = []
+    evac_data = build_evacuation_zones(fire_feature_collection)
     for payload in OVERLAY_GEOJSON.values():
         overlay_payload = dict(payload)
         if overlay_payload["id"] == "fire_perimeters":
             overlay_payload = {**overlay_payload, "data": fire_feature_collection}
+        elif overlay_payload["id"] == "evacuation_zones":
+            overlay_payload = {**overlay_payload, "data": evac_data}
+        elif overlay_payload["id"] == "smoke_plumes" and smoke_feature_collection:
+            overlay_payload = {**overlay_payload, "data": smoke_feature_collection}
         overlays.append(GeoOverlay(**overlay_payload))
     return overlays
 
@@ -308,7 +347,7 @@ def _compute_route_options(
 ) -> list[dict[str, Any]]:
     if routing is None:
         logger.warning("Routing engine unavailable; returning mock route options.")
-        return _mock_route_options()
+        return _mock_route_options(request.origin, request.destination)
 
     try:
         route_options = routing.compute_routes(
@@ -320,17 +359,17 @@ def _compute_route_options(
         raise
     except Exception as exc:
         logger.warning("Route computation failed; returning mock route options: %s", exc)
-        return _mock_route_options()
+        return _mock_route_options(request.origin, request.destination)
 
     if not route_options:
         logger.warning("Route computation returned no options; returning mock route options.")
-        return _mock_route_options()
+        return _mock_route_options(request.origin, request.destination)
 
     primary = route_options[0]
     primary_coords = primary.get("coordinates")
     if primary.get("id") == "unavailable" or not primary_coords:
         logger.warning("Route engine returned unavailable/empty route; returning mock route options.")
-        return _mock_route_options()
+        return _mock_route_options(request.origin, request.destination)
 
     return route_options
 
@@ -342,7 +381,18 @@ def health() -> dict[str, str]:
 
 @app.get("/api/status", response_model=WildfireStatus)
 def get_status() -> WildfireStatus:
-    return WildfireStatus(**WILDFIRE_STATUS)
+    fetched_at = _utc_now_iso()
+    try:
+        fire_feature_collection = fetch_live_fire_perimeters()
+        status_payload = {
+            **WILDFIRE_STATUS,
+            "active_fires": len(fire_feature_collection.get("features", [])),
+            "updated_at": fetched_at,
+        }
+        return WildfireStatus(**status_payload)
+    except Exception as exc:
+        logger.warning("Status endpoint falling back to mock payload: %s", exc)
+        return WildfireStatus(**{**WILDFIRE_STATUS, "updated_at": fetched_at})
 
 
 @app.post("/api/routes", response_model=RouteResponse)
@@ -362,33 +412,31 @@ def get_routes(request: RouteRequest) -> RouteResponse:
     if cached:
         return RouteResponse(**cached)
 
+    fire_overlay_enabled = "fire_perimeters" in request.overlays
+    live_fire_geojson: dict[str, Any] | None = None
+
+    # Always fetch live fire data when in live mode so routes account for fires
+    if request.mode == "live" and fire_overlay_enabled:
+        try:
+            live_fire_geojson = fetch_live_fire_perimeters()
+        except Exception as exc:
+            logger.warning("Live fire fetch failed for routing: %s", exc)
+            live_fire_geojson = OVERLAY_GEOJSON["fire_perimeters"]["data"]
+
     try:
-        baseline_routes = _compute_route_options(request, fire_geojson=None)
+        route_options = _compute_route_options(request, fire_geojson=live_fire_geojson)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    route_options = baseline_routes
     fire_impact = FireImpact(
         blocked=False,
         impacted_incidents=[],
         overlap_segments=0,
     )
 
-    fire_overlay_enabled = "fire_perimeters" in request.overlays
-    if request.mode == "live" and fire_overlay_enabled and baseline_routes:
-        try:
-            live_fire_geojson = fetch_live_fire_perimeters()
-        except Exception as exc:
-            logger.warning("Live fire fetch failed for routing fallback: %s", exc)
-            live_fire_geojson = OVERLAY_GEOJSON["fire_perimeters"]["data"]
-
-        fire_impact = _detect_fire_impact(baseline_routes[0], live_fire_geojson)
-        if fire_impact.blocked:
-            try:
-                route_options = _compute_route_options(request, fire_geojson=live_fire_geojson)
-            except ValueError as exc:
-                logger.warning("Fire-penalty reroute failed; returning baseline route: %s", exc)
-                route_options = baseline_routes
+    # Check fire impact on the recommended route
+    if live_fire_geojson and route_options:
+        fire_impact = _detect_fire_impact(route_options[0], live_fire_geojson)
 
     result = {
         "recommended": _serialize_route_option(route_options[0]),
@@ -401,8 +449,21 @@ def get_routes(request: RouteRequest) -> RouteResponse:
 
 @app.get("/api/overlays", response_model=OverlaysResponse)
 def get_overlays() -> OverlaysResponse:
-    overlays = [GeoOverlay(**payload) for payload in OVERLAY_GEOJSON.values()]
-    return OverlaysResponse(overlays=overlays)
+    try:
+        fire_feature_collection = fetch_live_fire_perimeters()
+        smoke_feature_collection: dict[str, Any] | None = None
+        try:
+            smoke_feature_collection = fetch_smoke_plumes()
+        except Exception as smoke_exc:
+            logger.warning("Smoke plume fetch failed for overlays endpoint: %s", smoke_exc)
+
+        return OverlaysResponse(
+            overlays=_live_overlays(fire_feature_collection, smoke_feature_collection)
+        )
+    except Exception as exc:
+        logger.warning("Overlays endpoint falling back to mock payload: %s", exc)
+        overlays = [GeoOverlay(**payload) for payload in OVERLAY_GEOJSON.values()]
+        return OverlaysResponse(overlays=overlays)
 
 
 @app.get("/api/updates", response_model=list[LiveUpdate])
@@ -415,6 +476,12 @@ def get_live() -> LiveResponse:
     fetched_at = _utc_now_iso()
     try:
         fire_feature_collection = fetch_live_fire_perimeters()
+        smoke_feature_collection: dict[str, Any] | None = None
+        try:
+            smoke_feature_collection = fetch_smoke_plumes()
+        except Exception as smoke_exc:
+            logger.warning("Smoke plume fetch failed; using mock data: %s", smoke_exc)
+
         status_payload = {
             **WILDFIRE_STATUS,
             "active_fires": len(fire_feature_collection.get("features", [])),
@@ -423,7 +490,7 @@ def get_live() -> LiveResponse:
         return LiveResponse(
             fetched_at=fetched_at,
             status=WildfireStatus(**status_payload),
-            overlays=_live_overlays(fire_feature_collection),
+            overlays=_live_overlays(fire_feature_collection, smoke_feature_collection),
             updates=[LiveUpdate(**update) for update in LIVE_UPDATES],
             key_incidents=key_incidents_from_feature_collection(fire_feature_collection),
         )

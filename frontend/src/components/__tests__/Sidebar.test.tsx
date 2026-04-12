@@ -63,6 +63,7 @@ describe('Sidebar', () => {
     renderSidebar();
 
     expect(screen.getByRole('button', { name: /Live Data/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Sample Fallback/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Historical Showcase/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Find Safe Routes/i })).toBeInTheDocument();
     expect(screen.getByText(/Live Data Layers/i)).toBeInTheDocument();
@@ -73,16 +74,15 @@ describe('Sidebar', () => {
     const onModeChange = vi.fn();
     renderSidebar({ onModeChange });
 
-    fireEvent.click(screen.getByRole('button', { name: /Historical Showcase/i }));
-    expect(onModeChange).toHaveBeenCalledWith('historical');
+    fireEvent.click(screen.getByRole('button', { name: /Sample Fallback/i }));
+    expect(onModeChange).toHaveBeenCalledWith('fallback');
   });
 
-  it('fires map color callback when selecting a new theme', () => {
-    const onMapThemeChange = vi.fn();
-    renderSidebar({ onMapThemeChange, mapTheme: 'dark' });
+  it('does not render map color controls', () => {
+    renderSidebar();
 
-    fireEvent.click(screen.getByRole('button', { name: /Pure Grey/i }));
-    expect(onMapThemeChange).toHaveBeenCalledWith('gray');
+    expect(screen.queryByText(/Map color/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Pure Grey/i })).not.toBeInTheDocument();
   });
 
   it('shows live refresh, incidents, and route impact warning', () => {
@@ -102,7 +102,7 @@ describe('Sidebar', () => {
     });
 
     expect(screen.getByText(/Last updated/i)).toBeInTheDocument();
-    expect(screen.getByText(/Key incidents/i)).toBeInTheDocument();
+    expect(screen.getByText(/Active fires/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Palisades Fire/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Live route impact detected/i)).toBeInTheDocument();
 
@@ -125,5 +125,27 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('button', { name: /Find Safe Routes/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/Live Data Layers/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Routes \(2\)/i)).not.toBeInTheDocument();
+  });
+
+  it('shows fallback narrative and fixed sample route copy in fallback mode', () => {
+    renderSidebar({
+      mode: 'fallback',
+      fallbackNarrative: {
+        title: 'Topanga Canyon fallback sample',
+        summary: 'Static fallback overlays and routes.',
+        routeNarrative: 'Alternative 1 swings northeast around the canyon.',
+      },
+      fireImpact: {
+        blocked: false,
+        impacted_incidents: [],
+      },
+    });
+
+    expect(screen.getByText(/Topanga Canyon fallback sample/i)).toBeInTheDocument();
+    expect(screen.getByText(/Fallback route note/i)).toBeInTheDocument();
+    expect(screen.getByText(/Alternative 1 swings northeast around the canyon/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sample Layers/i)).toBeInTheDocument();
+    expect(screen.getByText(/Routes \(2\)/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Find Safe Routes/i })).not.toBeInTheDocument();
   });
 });
