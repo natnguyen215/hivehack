@@ -420,6 +420,14 @@ function MapView({
     if (!bounds) return;
 
     const boundsKey = `${bounds.getWest().toFixed(3)},${bounds.getSouth().toFixed(3)},${bounds.getEast().toFixed(3)},${bounds.getNorth().toFixed(3)}`;
+
+    // In historical mode, keep the user's camera after first fit so
+    // clicking timestamps does not keep snapping the map view.
+    if (resolvedMode === 'historical' && lastBoundsKeyRef.current.historical) {
+      lastBoundsKeyRef.current.historical = boundsKey;
+      return;
+    }
+
     if (boundsKey === lastBoundsKeyRef.current[resolvedMode]) return;
 
     lastBoundsKeyRef.current[resolvedMode] = boundsKey;
