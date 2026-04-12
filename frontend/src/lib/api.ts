@@ -6,6 +6,7 @@ import type {
   OverlaysResponse,
   RouteRequestPayload,
   RouteResponse,
+  TravelMode,
   WildfireStatus,
 } from '@/types';
 
@@ -92,9 +93,9 @@ export async function fetchUpdates(): Promise<LiveUpdate[]> {
 }
 
 /**
- * Snap waypoints to drivable roads and return dense route geometry + summary metrics.
+ * Snap waypoints to roads and return dense route geometry + summary metrics.
  */
-export async function fetchDirections(waypoints: [number, number][]): Promise<DirectionsResult | null> {
+export async function fetchDirections(waypoints: [number, number][], travelMode: TravelMode = 'driving'): Promise<DirectionsResult | null> {
   if (waypoints.length < 2 || !MAPBOX_TOKEN) return null;
 
   let points = waypoints;
@@ -108,9 +109,9 @@ export async function fetchDirections(waypoints: [number, number][]): Promise<Di
     points = sampled;
   }
 
-  const cacheKey = points
+  const cacheKey = `${travelMode}:${points
     .map(([lng, lat]) => `${lng.toFixed(5)},${lat.toFixed(5)}`)
-    .join(';');
+    .join(';')}`;
 
   if (directionsCache.has(cacheKey)) {
     return directionsCache.get(cacheKey) ?? null;
@@ -125,7 +126,7 @@ export async function fetchDirections(waypoints: [number, number][]): Promise<Di
     geometries: 'geojson',
     overview: 'full',
   });
-  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?${params.toString()}`;
+  const url = `https://api.mapbox.com/directions/v5/mapbox/${travelMode}/${coords}?${params.toString()}`;
 
   const request = (async (): Promise<DirectionsResult | null> => {
     const res = await fetch(url);
@@ -151,6 +152,47 @@ export async function fetchDirections(waypoints: [number, number][]): Promise<Di
   } finally {
     directionsInFlight.delete(cacheKey);
   }
+}
+
+/**
+ * Geocode a place name to coordinates. Returns null if no match.
+ */
+export async function geocodePlace(query: string): Promise<[number, number] | null> {
+  const results = await searchPlaces(query);
+  return results.length > 0 ? results[0].center : null;
+}
+
+/**
+ * Fetch real routes (with alternatives) between an origin and destination.
+ * Uses Mapbox Directions API directly — no backend needed.
+ */
+export async function fetchMapboxRoutes(
+  origin: [number, number],
+  destination: [number, number],
+  travelMode: TravelMode = 'driving',
+): Promise<DirectionsResult[]> {
+  if (!MAPBOX_TOKEN) return [];
+
+  const coords = `${origin[0]},${origin[1]};${destination[0]},${destination[1]}`;
+  const params = new URLSearchParams({
+    access_token: MAPBOX_TOKEN,
+    geometries: 'geojson',
+    overview: 'full',
+    alternatives: 'true',
+  });
+  const url = `https://api.mapbox.com/directions/v5/mapbox/${travelMode}/${coords}?${params.toString()}`;
+
+  const res = await fetch(url);
+  if (!res.ok) return [];
+
+  const data = (await res.json()) as MapboxDirectionsResponse;
+  if (!data.routes) return [];
+
+  return data.routes.map((route) => ({
+    coordinates: route.geometry.coordinates,
+    distance_miles: Math.round(route.distance * 0.000621371 * 10) / 10,
+    duration_minutes: Math.round(route.duration / 60),
+  }));
 }
 
 function setGeocodeCache(key: string, value: GeocodingSuggestion[]) {

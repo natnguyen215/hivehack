@@ -4,7 +4,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { memo, useEffect, useRef, useState } from 'react';
 
-import type { DataMode, RouteGeometry } from '@/types';
+import type { DataMode, MapStyle, RouteGeometry } from '@/types';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
@@ -14,13 +14,22 @@ export type RouteDisplay = {
   selected: boolean;
 };
 
+type FlyTarget = {
+  bounds: [number, number, number, number]; // [west, south, east, north]
+  key: number; // increment to re-trigger same bounds
+};
+
 type MapViewProps = {
   activeOverlays: Set<string>;
   routeGeometry: RouteGeometry | null;
   allRoutes?: RouteDisplay[];
   fireOverride?: GeoJSON.FeatureCollection | null;
+  evacuationData?: GeoJSON.FeatureCollection | null;
+  smokeData?: GeoJSON.FeatureCollection | null;
   routeBlocked?: boolean;
   mode?: DataMode;
+  mapStyle?: MapStyle;
+  flyTo?: FlyTarget | null;
 };
 
 const ROUTE_SOURCE_ID = 'route-source';
@@ -31,6 +40,16 @@ const LIVE_FIRE_OUTLINE_LAYER_ID = 'live-fire-outline-layer';
 const HISTORICAL_FIRE_SOURCE_ID = 'historical-fire-source';
 const HISTORICAL_FIRE_FILL_LAYER_ID = 'historical-fire-fill-layer';
 const HISTORICAL_FIRE_OUTLINE_LAYER_ID = 'historical-fire-outline-layer';
+const EVAC_SOURCE_ID = 'evacuation-zones-source';
+const EVAC_FILL_LAYER_ID = 'evacuation-zones-fill-layer';
+const EVAC_OUTLINE_LAYER_ID = 'evacuation-zones-outline-layer';
+const SMOKE_SOURCE_ID = 'smoke-plumes-source';
+const SMOKE_FILL_LAYER_ID = 'smoke-plumes-fill-layer';
+
+const STYLE_URLS: Record<MapStyle, string> = {
+  grayscale: 'mapbox://styles/mapbox/dark-v11',
+  streets: 'mapbox://styles/mapbox/streets-v12',
+};
 
 const ROUTE_COLORS = {
   selected: '#3b82f6',
@@ -129,6 +148,112 @@ function ensureFireLayers(
   }
 
   setFireLayerVisibility(map, fillLayerId, outlineLayerId, visible);
+}
+
+function ensureEvacLayers(
+  map: mapboxgl.Map,
+  data: GeoJSON.FeatureCollection,
+  visible: boolean,
+) {
+  const existingSource = map.getSource(EVAC_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+  if (!existingSource) {
+    map.addSource(EVAC_SOURCE_ID, { type: 'geojson', data });
+  } else {
+    existingSource.setData(data);
+  }
+
+  const evacFillColor: any = [
+    'case',
+    ['==', ['downcase', ['to-string', ['coalesce', ['get', 'status'], '']]], 'mandatory'],
+    '#eab308',
+    '#facc15',
+  ];
+
+  const evacFillOpacity: any = [
+    'case',
+    ['==', ['downcase', ['to-string', ['coalesce', ['get', 'status'], '']]], 'mandatory'],
+    0.3,
+    0.18,
+  ];
+
+  if (!map.getLayer(EVAC_FILL_LAYER_ID)) {
+    map.addLayer({
+      id: EVAC_FILL_LAYER_ID,
+      type: 'fill',
+      source: EVAC_SOURCE_ID,
+      paint: {
+        'fill-color': evacFillColor,
+        'fill-opacity': evacFillOpacity,
+      },
+      layout: { visibility: visible ? 'visible' : 'none' },
+    });
+  }
+
+  if (!map.getLayer(EVAC_OUTLINE_LAYER_ID)) {
+    map.addLayer({
+      id: EVAC_OUTLINE_LAYER_ID,
+      type: 'line',
+      source: EVAC_SOURCE_ID,
+      paint: {
+        'line-color': '#a16207',
+        'line-width': 2,
+        'line-dasharray': [4, 3],
+        'line-opacity': 0.85,
+      },
+      layout: { visibility: visible ? 'visible' : 'none' },
+    });
+  }
+
+  const vis = visible ? 'visible' : 'none';
+  if (map.getLayer(EVAC_FILL_LAYER_ID)) map.setLayoutProperty(EVAC_FILL_LAYER_ID, 'visibility', vis);
+  if (map.getLayer(EVAC_OUTLINE_LAYER_ID)) map.setLayoutProperty(EVAC_OUTLINE_LAYER_ID, 'visibility', vis);
+}
+
+function ensureSmokeLayers(
+  map: mapboxgl.Map,
+  data: GeoJSON.FeatureCollection,
+  visible: boolean,
+) {
+  const existingSource = map.getSource(SMOKE_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+  if (!existingSource) {
+    map.addSource(SMOKE_SOURCE_ID, { type: 'geojson', data });
+  } else {
+    existingSource.setData(data);
+  }
+
+  const smokeFillColor: any = [
+    'case',
+    ['==', ['downcase', ['to-string', ['coalesce', ['get', 'density'], '']]], 'heavy'],
+    '#64748b',
+    ['==', ['downcase', ['to-string', ['coalesce', ['get', 'density'], '']]], 'medium'],
+    '#94a3b8',
+    '#cbd5e1',
+  ];
+
+  const smokeFillOpacity: any = [
+    'case',
+    ['==', ['downcase', ['to-string', ['coalesce', ['get', 'density'], '']]], 'heavy'],
+    0.45,
+    ['==', ['downcase', ['to-string', ['coalesce', ['get', 'density'], '']]], 'medium'],
+    0.3,
+    0.18,
+  ];
+
+  if (!map.getLayer(SMOKE_FILL_LAYER_ID)) {
+    map.addLayer({
+      id: SMOKE_FILL_LAYER_ID,
+      type: 'fill',
+      source: SMOKE_SOURCE_ID,
+      paint: {
+        'fill-color': smokeFillColor,
+        'fill-opacity': smokeFillOpacity,
+      },
+      layout: { visibility: visible ? 'visible' : 'none' },
+    });
+  }
+
+  const vis = visible ? 'visible' : 'none';
+  if (map.getLayer(SMOKE_FILL_LAYER_ID)) map.setLayoutProperty(SMOKE_FILL_LAYER_ID, 'visibility', vis);
 }
 
 function upsertRoute(map: mapboxgl.Map, geometry: RouteGeometry | null, blocked: boolean) {
@@ -292,9 +417,11 @@ function getNumeric(props: Record<string, unknown>, keys: string[]) {
 function buildPopupHtml(props: Record<string, unknown>) {
   const nameRaw = firstValue(props, ['name', 'incident_name', 'incident', 'poly_IncidentName', 'FIRE_NAME']);
   const statusRaw = firstValue(props, ['status', 'state', 'incident_status', 'poly_Status']);
-  const timestampRaw = firstValue(props, ['timestamp', 'updated_at', 'poly_DateCurrent', 'DATE_CURRENT']);
+  const timestampRaw = firstValue(props, ['timestamp', 'updated_at', 'observed_at', 'issued_at', 'poly_DateCurrent', 'DATE_CURRENT']);
   const severityRaw = firstValue(props, ['severity', 'risk', 'risk_level']);
   const acres = getNumeric(props, ['acres', 'gis_acres', 'poly_GISAcres', 'GIS_ACRES']);
+  const densityRaw = firstValue(props, ['density']);
+  const zoneIdRaw = firstValue(props, ['zone_id']);
 
   const name = escapeHtml(String(nameRaw ?? 'Fire Perimeter'));
   const timestamp = timestampRaw
@@ -309,9 +436,15 @@ function buildPopupHtml(props: Record<string, unknown>) {
   const acresMarkup = typeof acres === 'number'
     ? `<div style="color:#fca5a5;font-weight:600;margin-top:3px;">${Math.round(acres).toLocaleString()} acres</div>`
     : '';
+  const density = densityRaw
+    ? `<div style="color:#94a3b8;margin-top:2px;">Density: ${escapeHtml(String(densityRaw))}</div>`
+    : '';
+  const zoneId = zoneIdRaw
+    ? `<div style="color:#eab308;margin-top:2px;">Zone: ${escapeHtml(String(zoneIdRaw))}</div>`
+    : '';
 
   return `<div style="font-family:system-ui;font-size:12px;padding:2px 4px;background:#1e293b;color:#f1f5f9;border-radius:6px;">
-    <strong style="font-size:13px;">${name}</strong>${timestamp}${status}${severity}${acresMarkup}
+    <strong style="font-size:13px;">${name}</strong>${timestamp}${status}${severity}${acresMarkup}${density}${zoneId}
   </div>`;
 }
 
@@ -320,8 +453,12 @@ function MapView({
   routeGeometry,
   allRoutes = [],
   fireOverride,
+  evacuationData,
+  smokeData,
   routeBlocked = false,
   mode = 'live',
+  mapStyle = 'grayscale',
+  flyTo = null,
 }: MapViewProps) {
   const resolvedMode = mode;
 
@@ -338,7 +475,7 @@ function MapView({
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
+      style: STYLE_URLS[mapStyle],
       center: [-118.52, 34.04],
       zoom: 9,
     });
@@ -354,7 +491,30 @@ function MapView({
       map.remove();
       mapRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const currentStyleUrl = STYLE_URLS[mapStyle];
+    try {
+      const activeStyle = map.getStyle();
+      // Skip if the style already matches (compare by name/url pattern)
+      if (activeStyle?.name?.includes(mapStyle === 'grayscale' ? 'Dark' : 'Mapbox Streets')) return;
+    } catch {
+      // Style not loaded yet — proceed with setStyle
+    }
+
+    setMapReady(false);
+    managedRouteIdsRef.current.clear();
+    map.setStyle(currentStyleUrl);
+
+    map.once('style.load', () => {
+      setMapReady(true);
+    });
+  }, [mapReady, mapStyle]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -390,6 +550,30 @@ function MapView({
       setFireLayerVisibility(map, LIVE_FIRE_FILL_LAYER_ID, LIVE_FIRE_OUTLINE_LAYER_ID, false);
     }
   }, [activeOverlays, fireOverride, mapReady, resolvedMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    if (resolvedMode === 'live' && evacuationData) {
+      ensureEvacLayers(map, evacuationData, activeOverlays.has('evacuation_zones'));
+    } else {
+      const vis = 'none';
+      if (map.getLayer(EVAC_FILL_LAYER_ID)) map.setLayoutProperty(EVAC_FILL_LAYER_ID, 'visibility', vis);
+      if (map.getLayer(EVAC_OUTLINE_LAYER_ID)) map.setLayoutProperty(EVAC_OUTLINE_LAYER_ID, 'visibility', vis);
+    }
+  }, [activeOverlays, evacuationData, mapReady, resolvedMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    if (resolvedMode === 'live' && smokeData) {
+      ensureSmokeLayers(map, smokeData, activeOverlays.has('smoke_plumes'));
+    } else {
+      if (map.getLayer(SMOKE_FILL_LAYER_ID)) map.setLayoutProperty(SMOKE_FILL_LAYER_ID, 'visibility', 'none');
+    }
+  }, [activeOverlays, smokeData, mapReady, resolvedMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -432,6 +616,20 @@ function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
+    if (!map || !mapReady || !flyTo) return;
+
+    const [west, south, east, north] = flyTo.bounds;
+    map.fitBounds(
+      [
+        [west, south],
+        [east, north],
+      ],
+      { padding: 100, duration: 800, maxZoom: 13 },
+    );
+  }, [flyTo, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
     if (!map || !mapReady) return;
 
     if (!popupRef.current) {
@@ -459,7 +657,7 @@ function MapView({
     };
 
     const trackedLayerIds: string[] = [];
-    const layerCandidates = [LIVE_FIRE_FILL_LAYER_ID, HISTORICAL_FIRE_FILL_LAYER_ID];
+    const layerCandidates = [LIVE_FIRE_FILL_LAYER_ID, HISTORICAL_FIRE_FILL_LAYER_ID, EVAC_FILL_LAYER_ID, SMOKE_FILL_LAYER_ID];
 
     for (const layerId of layerCandidates) {
       if (!map.getLayer(layerId)) continue;
@@ -475,7 +673,7 @@ function MapView({
       }
       popup.remove();
     };
-  }, [fireOverride, mapReady]);
+  }, [fireOverride, evacuationData, smokeData, mapReady]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

@@ -9,10 +9,12 @@ import {
   fetchDirections,
   fetchHistoricalPalisades,
   fetchLiveData,
+  fetchMapboxRoutes,
   fetchOverlays,
   fetchRoutes,
   fetchStatus,
   fetchUpdates,
+  geocodePlace,
 } from '@/lib/api';
 import { FIRE_SNAPSHOTS } from '@/lib/fire-timeline';
 import type {
@@ -23,12 +25,18 @@ import type {
   HistoricalSnapshot,
   KeyIncident,
   LiveUpdate,
-  MapTheme,
+  MapStyle,
   Route,
   RouteGeometry,
   RouteResponse,
+  TravelMode,
   WildfireStatus,
 } from '@/types';
+
+type FlyTarget = {
+  bounds: [number, number, number, number];
+  key: number;
+};
 
 const MapView = dynamic(() => import('@/components/MapView'), { ssr: false });
 const TimelineSlider = dynamic(() => import('@/components/TimelineSlider'), { ssr: false });
@@ -70,86 +78,108 @@ const HISTORICAL_ROUTE_TEMPLATES: Record<'clear' | 'blocked', TimelineRouteTempl
       duration_minutes: 108,
       risk: 'low',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.48, 34.06],
-        [-119.2965, 34.2819],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.3950, 34.0180], // I-10 at La Cienega
+        [-118.4725, 34.0280], // I-10 / I-405 junction
+        [-118.5180, 34.0390], // near Pacific Palisades on US-101
+        [-118.6010, 34.0460], // US-101 Malibu junction
+        [-118.8070, 34.1530], // US-101 at Camarillo Springs
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.2290, 34.2750], // US-101 past Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
     {
       id: 'timeline-route-2',
-      name: 'US-101 via Ventura',
+      name: 'US-101 via Hollywood',
       distance_miles: 98.1,
       duration_minutes: 115,
       risk: 'low',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.32, 34.09],
-        [-118.75, 34.31],
-        [-119.2965, 34.2819],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.3260, 34.1020], // US-101 Hollywood
+        [-118.3910, 34.1380], // US-101 Sherman Oaks
+        [-118.5010, 34.1590], // US-101 Encino / Tarzana
+        [-118.6060, 34.1710], // US-101 Woodland Hills
+        [-118.7940, 34.2070], // US-101 Thousand Oaks
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
     {
       id: 'timeline-route-3',
-      name: 'CA-1 Coastal Route',
+      name: 'I-405 N to US-101',
       distance_miles: 110.7,
       duration_minutes: 135,
       risk: 'moderate',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.6, 34.04],
-        [-118.91, 34.1],
-        [-119.2965, 34.2819],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.3950, 34.0180], // I-10 at La Cienega
+        [-118.4725, 34.0280], // I-10 / I-405 interchange
+        [-118.4690, 34.0890], // I-405 at Getty Center
+        [-118.4700, 34.1560], // I-405 / US-101 junction (Sherman Oaks)
+        [-118.6060, 34.1710], // US-101 Woodland Hills
+        [-118.7940, 34.2070], // US-101 Thousand Oaks
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
   ],
   blocked: [
     {
       id: 'timeline-route-1',
-      name: 'I-405 N to US-101 N',
-      distance_miles: 102.3,
-      duration_minutes: 124,
+      name: 'I-405 N to US-101 W',
+      distance_miles: 115.9,
+      duration_minutes: 130,
       risk: 'moderate',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.39, 34.07],
-        [-118.46, 34.16],
-        [-118.55, 34.27],
-        [-118.72, 34.28],
-        [-119.2965, 34.2819],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.3780, 34.0290], // I-10 heading west
+        [-118.4725, 34.0280], // I-10 / I-405 interchange
+        [-118.4690, 34.0890], // I-405 at Getty Center / Sepulveda Pass
+        [-118.4700, 34.1560], // I-405 / US-101 junction (Sherman Oaks)
+        [-118.6060, 34.1710], // US-101 Woodland Hills
+        [-118.7940, 34.2070], // US-101 Thousand Oaks
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.2290, 34.2750], // US-101 past Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
     {
       id: 'timeline-route-2',
-      name: 'I-5 N via Grapevine',
+      name: 'I-5 N to CA-126 W',
       distance_miles: 118.5,
       duration_minutes: 142,
       risk: 'moderate',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.24, 34.24],
-        [-118.36, 34.44],
-        [-118.62, 34.53],
-        [-119.2965, 34.2819],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.2460, 34.1060], // I-5 at Los Feliz
+        [-118.2556, 34.1478], // I-5 at Glendale
+        [-118.3200, 34.2580], // I-5 at Newhall / Santa Clarita
+        [-118.3870, 34.2870], // CA-126 junction near Castaic
+        [-118.6300, 34.3080], // CA-126 at Fillmore
+        [-118.8820, 34.2830], // CA-126 at Santa Paula
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
     {
       id: 'timeline-route-3',
-      name: 'CA-14 N to I-5',
+      name: 'CA-14 N to I-5 W',
       distance_miles: 131.2,
       duration_minutes: 158,
       risk: 'high',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.17, 34.26],
-        [-118.14, 34.47],
-        [-118.55, 34.52],
-        [-119.2965, 34.2819],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.2460, 34.1060], // I-5 at Los Feliz
+        [-118.2556, 34.1478], // I-5 at Glendale
+        [-118.1880, 34.2190], // CA-14 junction at I-5
+        [-118.1510, 34.3440], // CA-14 at Agua Dulce
+        [-118.2900, 34.3870], // CA-14 / I-5 reconnect near Santa Clarita
+        [-118.6300, 34.3080], // CA-126 at Fillmore
+        [-118.8820, 34.2830], // CA-126 at Santa Paula
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
   ],
@@ -174,9 +204,9 @@ function formatSnapshotLabel(label: string, timestamp: string, fallbackIndex: nu
   return label || `Snapshot ${fallbackIndex + 1}`;
 }
 
-function extractFireOverlay(overlays: GeoOverlay[]): GeoJSON.FeatureCollection | null {
-  const fireOverlay = overlays.find((overlay) => overlay.id === 'fire_perimeters');
-  return fireOverlay?.data ?? null;
+function extractOverlay(overlays: GeoOverlay[], id: string): GeoJSON.FeatureCollection | null {
+  const overlay = overlays.find((o) => o.id === id);
+  return (overlay?.data as GeoJSON.FeatureCollection) ?? null;
 }
 
 function normalizeHistoricalSnapshots(snapshots: HistoricalSnapshot[]): FireSnapshot[] {
@@ -203,7 +233,6 @@ function buildHistoricalRouteData(
   const templates = HISTORICAL_ROUTE_TEMPLATES[variant];
 
   const routes = templates.map((template, index) => {
-    // For the primary route (index 0), prefer the snapped snapshot geometry
     let geometry: RouteGeometry;
     if (index === 0) {
       geometry = snapped[`snapshot-${snapshot.index}`]
@@ -233,7 +262,6 @@ function buildHistoricalRouteData(
 
 export default function HomePage() {
   const [mode, setMode] = useState<DataMode>('live');
-  const [mapTheme, setMapTheme] = useState<MapTheme>('dark');
   const [origin, setOrigin] = useState(DEFAULT_ORIGIN);
   const [originCoords, setOriginCoords] = useState<[number, number] | null>(null);
   const [destination, setDestination] = useState('');
@@ -245,6 +273,8 @@ export default function HomePage() {
   const [keyIncidents, setKeyIncidents] = useState<KeyIncident[]>([]);
   const [liveFetchedAt, setLiveFetchedAt] = useState<string | null>(null);
   const [liveFireOverride, setLiveFireOverride] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [liveEvacData, setLiveEvacData] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [liveSmokeData, setLiveSmokeData] = useState<GeoJSON.FeatureCollection | null>(null);
   const [refreshingLive, setRefreshingLive] = useState(false);
   const [historicalIncident, setHistoricalIncident] = useState<HistoricalIncident | null>(
     FALLBACK_HISTORICAL_INCIDENT,
@@ -254,6 +284,9 @@ export default function HomePage() {
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mapStyle, setMapStyle] = useState<MapStyle>('grayscale');
+  const [travelMode, setTravelMode] = useState<TravelMode>('driving');
+  const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null);
   const [snappedTemplates, setSnappedTemplates] = useState<Record<string, RouteGeometry>>({});
 
   const activeSnapshot = historicalSnapshots[timelineIndex] ?? historicalSnapshots[0] ?? null;
@@ -266,7 +299,9 @@ export default function HomePage() {
       setUpdates(live.updates);
       setKeyIncidents(live.key_incidents);
       setLiveFetchedAt(live.fetched_at);
-      setLiveFireOverride(extractFireOverlay(live.overlays));
+      setLiveFireOverride(extractOverlay(live.overlays, 'fire_perimeters'));
+      setLiveEvacData(extractOverlay(live.overlays, 'evacuation_zones'));
+      setLiveSmokeData(extractOverlay(live.overlays, 'smoke_plumes'));
     } catch {
       const [statusResult, updatesResult, overlaysResult] = await Promise.allSettled([
         fetchStatus(),
@@ -281,9 +316,14 @@ export default function HomePage() {
         setUpdates(updatesResult.value);
       }
       if (overlaysResult.status === 'fulfilled') {
-        setLiveFireOverride(extractFireOverlay(overlaysResult.value.overlays));
+        const overlays = overlaysResult.value.overlays;
+        setLiveFireOverride(extractOverlay(overlays, 'fire_perimeters'));
+        setLiveEvacData(extractOverlay(overlays, 'evacuation_zones'));
+        setLiveSmokeData(extractOverlay(overlays, 'smoke_plumes'));
       } else {
         setLiveFireOverride(null);
+        setLiveEvacData(null);
+        setLiveSmokeData(null);
       }
 
       setKeyIncidents([]);
@@ -341,7 +381,6 @@ export default function HomePage() {
       }
 
       await Promise.all([
-        // Snap template routes
         ...Array.from(seen.entries()).map(async ([key, ids]) => {
           const coords = JSON.parse(key) as [number, number][];
           const dir = await fetchDirections(coords);
@@ -352,7 +391,6 @@ export default function HomePage() {
             }
           }
         }),
-        // Snap snapshot primary routes (keyed as "snapshot-{index}")
         ...Array.from(snapshotCoords.entries()).map(async ([key, indices]) => {
           const coords = JSON.parse(key) as [number, number][];
           const dir = await fetchDirections(coords);
@@ -389,6 +427,60 @@ export default function HomePage() {
     setDestCoords(coords ?? null);
   }, []);
 
+  const handleFireClick = useCallback(
+    (incidentName: string) => {
+      const fireData = mode === 'historical' ? activeSnapshot?.geojson : liveFireOverride;
+      if (!fireData) return;
+
+      const nameKeys = ['name', 'incident_name', 'incident', 'poly_IncidentName', 'FIRE_NAME'];
+      const matching = fireData.features.filter((f) => {
+        const props = f.properties ?? {};
+        return nameKeys.some(
+          (k) =>
+            typeof props[k] === 'string' &&
+            props[k].toLowerCase().includes(incidentName.toLowerCase()),
+        );
+      });
+
+      if (matching.length === 0) return;
+
+      const subset: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: matching,
+      };
+
+      // Compute bounds
+      let west = Infinity,
+        south = Infinity,
+        east = -Infinity,
+        north = -Infinity;
+      for (const feature of subset.features) {
+        const geom = feature.geometry;
+        if (!geom) continue;
+        let rings: number[][][] = [];
+        if (geom.type === 'Polygon') rings = (geom as GeoJSON.Polygon).coordinates;
+        else if (geom.type === 'MultiPolygon')
+          rings = (geom as GeoJSON.MultiPolygon).coordinates.flat();
+        for (const ring of rings) {
+          for (const [lng, lat] of ring) {
+            if (lng < west) west = lng;
+            if (lng > east) east = lng;
+            if (lat < south) south = lat;
+            if (lat > north) north = lat;
+          }
+        }
+      }
+
+      if (!Number.isFinite(west)) return;
+
+      setFlyTarget((prev) => ({
+        bounds: [west, south, east, north],
+        key: (prev?.key ?? 0) + 1,
+      }));
+    },
+    [mode, activeSnapshot, liveFireOverride],
+  );
+
   const handleToggleOverlay = useCallback((overlayId: string) => {
     setActiveOverlays((previous) => {
       const next = new Set(previous);
@@ -407,31 +499,55 @@ export default function HomePage() {
 
     setLoadingRoute(true);
     try {
-      const response = await fetchRoutes({
-        origin: originCoords ?? origin,
-        destination: destCoords ?? destination,
-        overlays: Array.from(activeOverlays),
-        timestamp: new Date().toISOString(),
-        mode: 'live',
-      });
+      // Resolve coordinates for origin and destination
+      const resolvedOrigin = originCoords ?? (await geocodePlace(origin));
+      const resolvedDest = destCoords ?? (await geocodePlace(destination));
 
-      const routeOptions = [response.recommended, ...response.alternatives];
-      await Promise.all(
-        routeOptions.map(async (routeOption) => {
-          const coordinates = routeOption.geometry.coordinates;
-          if (coordinates.length < 2) return;
+      if (!resolvedOrigin || !resolvedDest) {
+        setRouteData(null);
+        return;
+      }
 
-          const directions = await fetchDirections(coordinates);
-          if (!directions) return;
+      // Get real routes from Mapbox Directions API
+      const mapboxRoutes = await fetchMapboxRoutes(resolvedOrigin, resolvedDest, travelMode);
+      if (mapboxRoutes.length === 0) {
+        setRouteData(null);
+        return;
+      }
 
-          routeOption.geometry = {
-            type: 'LineString',
-            coordinates: directions.coordinates,
-          };
-          routeOption.distance_miles = directions.distance_miles;
-          routeOption.duration_minutes = directions.duration_minutes;
-        }),
-      );
+      const riskLevels: Array<Route['risk']> = ['low', 'moderate', 'high'];
+      const routes: Route[] = mapboxRoutes.map((route, index) => ({
+        id: `route-${index}`,
+        name: index === 0 ? 'Fastest Route' : `Alternative ${index}`,
+        distance_miles: route.distance_miles,
+        duration_minutes: route.duration_minutes,
+        risk: riskLevels[Math.min(index, riskLevels.length - 1)],
+        segments: [],
+        geometry: { type: 'LineString' as const, coordinates: route.coordinates },
+      }));
+
+      // Check fire impact via backend if fire perimeters overlay is active
+      let fireImpact = undefined;
+      if (activeOverlays.has('fire_perimeters')) {
+        try {
+          const backendResponse = await fetchRoutes({
+            origin: resolvedOrigin,
+            destination: resolvedDest,
+            overlays: Array.from(activeOverlays),
+            timestamp: new Date().toISOString(),
+            mode: 'live',
+          });
+          fireImpact = backendResponse.fire_impact;
+        } catch {
+          // Fire impact check failed — continue without it
+        }
+      }
+
+      const response: RouteResponse = {
+        recommended: routes[0],
+        alternatives: routes.slice(1),
+        fire_impact: fireImpact,
+      };
 
       setRouteData(response);
       setSelectedRouteId(response.recommended.id);
@@ -440,7 +556,7 @@ export default function HomePage() {
     } finally {
       setLoadingRoute(false);
     }
-  }, [activeOverlays, destination, destCoords, mode, origin, originCoords]);
+  }, [activeOverlays, destination, destCoords, mode, origin, originCoords, travelMode]);
 
   const historicalRouteData = useMemo(
     () => (activeSnapshot ? buildHistoricalRouteData(activeSnapshot, snappedTemplates) : null),
@@ -540,15 +656,43 @@ export default function HomePage() {
         </div>
       </header>
 
-      <div className={`absolute inset-0 map-theme-${mapTheme}`}>
+      <div className="absolute inset-0">
         <MapView
           mode={mode}
           activeOverlays={activeOverlays}
           routeGeometry={routeGeometry}
           allRoutes={allRoutes}
           fireOverride={mapFireOverride}
+          evacuationData={liveEvacData}
+          smokeData={liveSmokeData}
           routeBlocked={routeBlocked}
+          mapStyle={mapStyle}
+          flyTo={flyTarget}
         />
+        <button
+          type="button"
+          onClick={() => setMapStyle((s) => (s === 'grayscale' ? 'streets' : 'grayscale'))}
+          className="absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-lg border border-white/15 bg-black/60 px-3 py-2 text-xs font-medium text-slate-200 shadow-lg backdrop-blur-sm transition hover:bg-black/80 hover:text-white"
+          aria-label="Toggle map style"
+        >
+          {mapStyle === 'grayscale' ? (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+              </svg>
+              Streets
+            </>
+          ) : (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 2v20M2 12h20" />
+              </svg>
+              Grayscale
+            </>
+          )}
+        </button>
       </div>
 
       <div
@@ -571,14 +715,15 @@ export default function HomePage() {
             onSelectRoute={setSelectedRouteId}
             mode={mode}
             onModeChange={setMode}
-            mapTheme={mapTheme}
-            onMapThemeChange={setMapTheme}
+            travelMode={travelMode}
+            onTravelModeChange={setTravelMode}
             onRefreshLiveData={() => {
               void loadLive();
             }}
             refreshingLiveData={refreshingLive}
             liveLastUpdated={liveFetchedAt}
             keyIncidents={keyIncidents}
+            onFireClick={handleFireClick}
             fireImpact={mode === 'live' ? routeData?.fire_impact ?? null : null}
             historicalNarrative={{
               title: historicalIncident?.name ?? 'Palisades fire progression',

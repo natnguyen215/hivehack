@@ -1,6 +1,7 @@
 export type SeverityLevel = 'critical' | 'high' | 'moderate' | 'low' | 'info';
 export type DataMode = 'live' | 'historical';
-export type MapTheme = 'dark' | 'gray' | 'white' | 'color';
+export type MapStyle = 'grayscale' | 'streets';
+export type TravelMode = 'driving' | 'walking';
 
 export interface WildfireStatus {
   level: string;

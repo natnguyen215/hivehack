@@ -2,6 +2,19 @@ import { describe, it, expect } from 'vitest';
 import { FIRE_SNAPSHOTS } from '../fire-timeline';
 
 describe('FIRE_SNAPSHOTS', () => {
+  const blockedRerouteCoordinates = [
+    [-118.2437, 34.0522],
+    [-118.3780, 34.0290],
+    [-118.4725, 34.0280],
+    [-118.4690, 34.0890],
+    [-118.4700, 34.1560],
+    [-118.6060, 34.1710],
+    [-118.7940, 34.2070],
+    [-119.0400, 34.2160],
+    [-119.2290, 34.2750],
+    [-119.6982, 34.4208],
+  ] as const;
+
   it('contains exactly 5 snapshots', () => {
     expect(FIRE_SNAPSHOTS).toHaveLength(5);
   });
@@ -89,6 +102,12 @@ describe('FIRE_SNAPSHOTS', () => {
   it('rerouted snapshots have moderate risk', () => {
     FIRE_SNAPSHOTS.filter((s) => s.routeBlocked).forEach((snap) => {
       expect(snap.routeRisk).toBe('moderate');
+    });
+  });
+
+  it('rerouted snapshots use the freeway-aligned historical showcase path', () => {
+    FIRE_SNAPSHOTS.filter((s) => s.routeBlocked).forEach((snap) => {
+      expect(snap.routeGeometry?.coordinates).toEqual(blockedRerouteCoordinates);
     });
   });
 

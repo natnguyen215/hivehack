@@ -101,6 +101,92 @@ OVERLAY_GEOJSON = {
     },
 }
 
+OVERLAY_GEOJSON["evacuation_zones"] = {
+    "id": "evacuation_zones",
+    "name": "Evacuation Zones",
+    "category": "evacuation",
+    "data": {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {
+                    "name": "Topanga Canyon Zone A",
+                    "zone_id": "TC-A",
+                    "status": "mandatory",
+                    "issued_at": "2026-04-11T16:00:00Z",
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [-118.670, 34.130],
+                            [-118.590, 34.130],
+                            [-118.590, 34.060],
+                            [-118.670, 34.060],
+                            [-118.670, 34.130],
+                        ]
+                    ],
+                },
+            },
+            {
+                "type": "Feature",
+                "properties": {
+                    "name": "Calabasas Advisory Zone",
+                    "zone_id": "CAL-1",
+                    "status": "voluntary",
+                    "issued_at": "2026-04-11T17:30:00Z",
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [-118.670, 34.170],
+                            [-118.590, 34.170],
+                            [-118.590, 34.130],
+                            [-118.670, 34.130],
+                            [-118.670, 34.170],
+                        ]
+                    ],
+                },
+            },
+        ],
+    },
+}
+
+OVERLAY_GEOJSON["smoke_plumes"] = {
+    "id": "smoke_plumes",
+    "name": "Smoke Plumes",
+    "category": "smoke",
+    "data": {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {
+                    "name": "Topanga Smoke Plume",
+                    "density": "heavy",
+                    "satellite": "GOES-18",
+                    "observed_at": "2026-04-11T17:00:00Z",
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [-118.700, 34.150],
+                            [-118.550, 34.200],
+                            [-118.400, 34.180],
+                            [-118.450, 34.100],
+                            [-118.600, 34.080],
+                            [-118.700, 34.150],
+                        ]
+                    ],
+                },
+            },
+        ],
+    },
+}
+
 LIVE_UPDATES = [
     {
         "id": "update-1",
