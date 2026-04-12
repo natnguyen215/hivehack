@@ -4,7 +4,7 @@ import { FormEvent, memo, useCallback, useEffect, useMemo, useRef, useState, typ
 
 import { searchPlaces } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import type { DataMode, FireImpact, GeocodingSuggestion, KeyIncident, MapTheme, Route, RouteResponse } from '@/types';
+import type { DataMode, FireImpact, GeocodingSuggestion, KeyIncident, Route, RouteResponse, TravelMode } from '@/types';
 
 type HistoricalNarrative = {
   title?: string;
@@ -27,14 +27,15 @@ type SidebarProps = {
   onSelectRoute: (id: string) => void;
   mode?: DataMode;
   onModeChange?: (mode: DataMode) => void;
-  mapTheme?: MapTheme;
-  onMapThemeChange?: (theme: MapTheme) => void;
   onRefreshLiveData?: () => void;
   refreshingLiveData?: boolean;
   liveLastUpdated?: string | null;
   keyIncidents?: KeyIncident[];
+  onFireClick?: (incidentName: string) => void;
   fireImpact?: FireImpact | null;
   historicalNarrative?: HistoricalNarrative | null;
+  travelMode?: TravelMode;
+  onTravelModeChange?: (mode: TravelMode) => void;
 };
 
 type OverlayOption = {
@@ -45,13 +46,8 @@ type OverlayOption = {
 
 const overlayOptions: OverlayOption[] = [
   { id: 'fire_perimeters', label: 'Fire Perimeters', swatchClass: 'bg-red-400' },
-];
-
-const mapThemeOptions: Array<{ id: MapTheme; label: string; swatchClass: string }> = [
-  { id: 'dark', label: 'Dark', swatchClass: 'bg-slate-900' },
-  { id: 'gray', label: 'Pure Grey', swatchClass: 'bg-neutral-500' },
-  { id: 'white', label: 'Pure White', swatchClass: 'bg-white' },
-  { id: 'color', label: 'Teal Tint', swatchClass: 'bg-cyan-400' },
+  { id: 'evacuation_zones', label: 'Evacuation Zones', swatchClass: 'bg-yellow-400' },
+  { id: 'smoke_plumes', label: 'Smoke Plumes', swatchClass: 'bg-slate-400' },
 ];
 
 const riskColors: Record<string, { bg: string; text: string; border: string }> = {
@@ -270,19 +266,19 @@ function Sidebar({
   onSelectRoute,
   mode,
   onModeChange,
-  mapTheme = 'dark',
-  onMapThemeChange,
   onRefreshLiveData,
   refreshingLiveData = false,
   liveLastUpdated,
   keyIncidents = [],
+  onFireClick,
   fireImpact,
   historicalNarrative,
+  travelMode,
+  onTravelModeChange,
 }: SidebarProps) {
   const resolvedMode = mode ?? 'live';
-  const resolvedMapTheme = mapTheme;
+  const resolvedTravelMode = travelMode ?? 'driving';
   const handleModeChange = onModeChange;
-  const handleMapThemeChange = onMapThemeChange;
 
   const allRoutes = useMemo(() => {
     if (!routeData) return [] as Array<{ route: Route; title: string }>;
@@ -335,32 +331,6 @@ function Sidebar({
           </div>
         </div>
 
-        <div className="mb-3 rounded-xl border border-white/10 bg-black/20 p-2.5">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Map color</p>
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
-            {mapThemeOptions.map((option) => {
-              const active = resolvedMapTheme === option.id;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => handleMapThemeChange?.(option.id)}
-                  className={cn(
-                    'flex items-center gap-2 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition',
-                    active
-                      ? 'border-orange-400/45 bg-orange-500/10 text-white'
-                      : 'border-white/10 bg-transparent text-slate-400 hover:border-white/20 hover:text-slate-200',
-                  )}
-                >
-                  <span className={cn('h-2 w-2 rounded-full border border-white/40', option.swatchClass)} />
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {resolvedMode === 'live' ? (
           <>
             <div className="mb-3 rounded-xl border border-white/10 bg-black/20 p-3">
@@ -381,21 +351,50 @@ function Sidebar({
 
               {keyIncidents.length > 0 && (
                 <div className="mt-2 border-t border-white/10 pt-2">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Key incidents</p>
-                  <ul className="space-y-1.5">
-                    {keyIncidents.slice(0, 3).map((incident, index) => (
-                      <li
-                        key={incident.id ?? `${incident.name}-${index}`}
-                        className="flex items-center justify-between gap-2 rounded-md bg-white/[0.03] px-2 py-1 text-xs text-slate-200"
-                      >
-                        <span className="truncate">{incident.name}</span>
-                        <span className="flex-shrink-0 text-[10px] text-slate-400">
-                          {typeof incident.acres === 'number'
-                            ? `${Math.round(incident.acres).toLocaleString()} ac`
-                            : incident.display_status ?? 'Active'}
-                        </span>
-                      </li>
-                    ))}
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Active fires</p>
+                    <span className="rounded-full bg-red-500/15 px-1.5 py-0.5 text-[10px] font-bold text-red-300">
+                      {keyIncidents.length}
+                    </span>
+                  </div>
+                  <ul className="custom-scrollbar max-h-48 space-y-1 overflow-y-auto pr-0.5">
+                    {keyIncidents.map((incident, index) => {
+                      const severityColor =
+                        incident.severity === 'critical'
+                          ? 'text-red-400'
+                          : incident.severity === 'high'
+                            ? 'text-orange-400'
+                            : incident.severity === 'moderate'
+                              ? 'text-amber-400'
+                              : 'text-slate-400';
+                      const dotColor =
+                        incident.severity === 'critical'
+                          ? 'bg-red-400'
+                          : incident.severity === 'high'
+                            ? 'bg-orange-400'
+                            : incident.severity === 'moderate'
+                              ? 'bg-amber-400'
+                              : 'bg-slate-500';
+                      return (
+                        <li key={incident.id ?? `${incident.name}-${index}`}>
+                          <button
+                            type="button"
+                            onClick={() => onFireClick?.(incident.name)}
+                            className="flex w-full items-center justify-between gap-2 rounded-md bg-white/[0.03] px-2 py-1 text-xs text-slate-200 transition hover:bg-orange-500/10 hover:text-white"
+                          >
+                            <span className="flex items-center gap-1.5 truncate">
+                              <span className={cn('h-1.5 w-1.5 flex-shrink-0 rounded-full', dotColor)} />
+                              <span className="truncate">{incident.name}</span>
+                            </span>
+                            <span className={cn('flex-shrink-0 text-[10px] font-medium', severityColor)}>
+                              {typeof incident.acres === 'number'
+                                ? `${Math.round(incident.acres).toLocaleString()} ac`
+                                : incident.display_status ?? 'Active'}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -431,6 +430,44 @@ function Sidebar({
                   </svg>
                 }
               />
+
+              <div className="rounded-xl border border-white/10 bg-black/20 p-1">
+                <div className="grid grid-cols-2 gap-1">
+                  <button
+                    type="button"
+                    aria-pressed={resolvedTravelMode === 'driving'}
+                    onClick={() => onTravelModeChange?.('driving')}
+                    className={cn(
+                      'flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition',
+                      resolvedTravelMode === 'driving'
+                        ? 'bg-orange-500/20 text-orange-100'
+                        : 'text-slate-400 hover:bg-white/5 hover:text-slate-200',
+                    )}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 17h14M5 17a2 2 0 01-2-2V9a2 2 0 012-2h1l2-3h8l2 3h1a2 2 0 012 2v6a2 2 0 01-2 2M5 17v1a1 1 0 001 1h1a1 1 0 001-1v-1m8 0v1a1 1 0 001 1h1a1 1 0 001-1v-1" />
+                    </svg>
+                    Driving
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={resolvedTravelMode === 'walking'}
+                    onClick={() => onTravelModeChange?.('walking')}
+                    className={cn(
+                      'flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition',
+                      resolvedTravelMode === 'walking'
+                        ? 'bg-orange-500/20 text-orange-100'
+                        : 'text-slate-400 hover:bg-white/5 hover:text-slate-200',
+                    )}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="13" cy="4" r="2" />
+                      <path d="M15 7l-3 9M9 21l3-9m0 0l-2-4m2 4h3" />
+                    </svg>
+                    Walking
+                  </button>
+                </div>
+              </div>
 
               <button
                 type="submit"

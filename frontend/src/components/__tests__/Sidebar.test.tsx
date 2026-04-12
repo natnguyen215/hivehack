@@ -77,12 +77,11 @@ describe('Sidebar', () => {
     expect(onModeChange).toHaveBeenCalledWith('historical');
   });
 
-  it('fires map color callback when selecting a new theme', () => {
-    const onMapThemeChange = vi.fn();
-    renderSidebar({ onMapThemeChange, mapTheme: 'dark' });
+  it('does not render map color controls', () => {
+    renderSidebar();
 
-    fireEvent.click(screen.getByRole('button', { name: /Pure Grey/i }));
-    expect(onMapThemeChange).toHaveBeenCalledWith('gray');
+    expect(screen.queryByText(/Map color/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Pure Grey/i })).not.toBeInTheDocument();
   });
 
   it('shows live refresh, incidents, and route impact warning', () => {
@@ -102,7 +101,7 @@ describe('Sidebar', () => {
     });
 
     expect(screen.getByText(/Last updated/i)).toBeInTheDocument();
-    expect(screen.getByText(/Key incidents/i)).toBeInTheDocument();
+    expect(screen.getByText(/Active fires/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Palisades Fire/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Live route impact detected/i)).toBeInTheDocument();
 

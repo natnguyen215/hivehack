@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlparse
+
+from app import fire_data
 from app import main
 from app.models import RouteRequest
 
@@ -56,6 +59,27 @@ def test_get_live_uses_live_perimeters(monkeypatch) -> None:
     assert response.status.active_fires == 1
     assert response.key_incidents[0].name == "Alpha Fire"
     assert response.fetched_at.endswith("Z")
+
+
+def test_fetch_live_fire_perimeters_limits_query_to_california(monkeypatch) -> None:
+    requested_url: dict[str, str] = {}
+
+    def _fake_http_get_json(url: str, timeout_seconds: float = 9.0) -> dict:
+        requested_url["value"] = url
+        return {"type": "FeatureCollection", "features": []}
+
+    monkeypatch.setattr(fire_data, "_http_get_json", _fake_http_get_json)
+
+    response = fire_data.fetch_live_fire_perimeters(record_count=25, timeout_seconds=3.0)
+
+    assert response == {"type": "FeatureCollection", "features": []}
+
+    parsed = urlparse(requested_url["value"])
+    params = parse_qs(parsed.query)
+    assert params["geometry"] == [fire_data.CALIFORNIA_BBOX]
+    assert params["resultRecordCount"] == ["25"]
+    assert params["geometryType"] == ["esriGeometryEnvelope"]
+    assert params["spatialRel"] == ["esriSpatialRelIntersects"]
 
 
 def test_get_live_falls_back_to_mock_on_fetch_error(monkeypatch) -> None:
