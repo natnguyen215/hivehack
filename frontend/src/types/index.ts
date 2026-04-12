@@ -1,5 +1,5 @@
 export type SeverityLevel = 'critical' | 'high' | 'moderate' | 'low' | 'info';
-export type DataMode = 'live' | 'historical';
+export type DataMode = 'live' | 'fallback' | 'historical';
 export type MapStyle = 'grayscale' | 'streets';
 export type TravelMode = 'driving' | 'walking';
 

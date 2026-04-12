@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import StatusBanner from '@/components/StatusBanner';
 import {
+  FALLBACK_SAMPLE,
+} from '@/lib/fallback-sample';
+import {
   fetchDirections,
   fetchHistoricalPalisades,
   fetchLiveData,
@@ -281,6 +284,27 @@ function buildHistoricalRouteData(
   };
 }
 
+function buildFallbackRouteData(snapped: Record<string, RouteGeometry>): RouteResponse {
+  const recommended = FALLBACK_SAMPLE.routeData.recommended;
+  const alternatives = FALLBACK_SAMPLE.routeData.alternatives.map((route) => ({
+    ...route,
+    geometry: snapped[route.id] ?? route.geometry,
+  }));
+
+  return {
+    recommended: {
+      ...recommended,
+      geometry: snapped[recommended.id] ?? recommended.geometry,
+    },
+    alternatives,
+    fire_impact: FALLBACK_SAMPLE.routeData.fire_impact,
+  };
+}
+
+const fallbackFireOverlay = extractOverlay(FALLBACK_SAMPLE.overlays, 'fire_perimeters');
+const fallbackEvacData = extractOverlay(FALLBACK_SAMPLE.overlays, 'evacuation_zones');
+const fallbackSmokeData = extractOverlay(FALLBACK_SAMPLE.overlays, 'smoke_plumes');
+
 export default function HomePage() {
   const [mode, setMode] = useState<DataMode>('live');
   const [origin, setOrigin] = useState(DEFAULT_ORIGIN);
@@ -309,6 +333,7 @@ export default function HomePage() {
   const [travelMode, setTravelMode] = useState<TravelMode>('driving');
   const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null);
   const [snappedTemplates, setSnappedTemplates] = useState<Record<string, RouteGeometry>>({});
+  const [snappedFallbackRoutes, setSnappedFallbackRoutes] = useState<Record<string, RouteGeometry>>({});
 
   const activeSnapshot = historicalSnapshots[timelineIndex] ?? historicalSnapshots[0] ?? null;
 
@@ -448,6 +473,37 @@ export default function HomePage() {
   }, [historicalSnapshots]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function snapFallbackRoutesToRoads() {
+      const routes = [
+        FALLBACK_SAMPLE.routeData.recommended,
+        ...FALLBACK_SAMPLE.routeData.alternatives,
+      ];
+      const results: Record<string, RouteGeometry> = {};
+
+      await Promise.all(
+        routes.map(async (route) => {
+          const directions = await fetchDirections(route.geometry.coordinates);
+          if (!directions || cancelled) return;
+
+          results[route.id] = {
+            type: 'LineString',
+            coordinates: directions.coordinates,
+          };
+        }),
+      );
+
+      if (!cancelled) setSnappedFallbackRoutes(results);
+    }
+
+    void snapFallbackRoutesToRoads();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     setTimelineIndex((current) => {
       if (historicalSnapshots.length === 0) return 0;
       return Math.min(current, historicalSnapshots.length - 1);
@@ -466,7 +522,12 @@ export default function HomePage() {
 
   const handleFireClick = useCallback(
     (incidentName: string) => {
-      const fireData = mode === 'historical' ? activeSnapshot?.geojson : liveFireOverride;
+      const fireData =
+        mode === 'historical'
+          ? activeSnapshot?.geojson
+          : mode === 'fallback'
+            ? fallbackFireOverlay
+            : liveFireOverride;
       if (!fireData) return;
 
       const nameKeys = ['name', 'incident_name', 'incident', 'poly_IncidentName', 'FIRE_NAME'];
@@ -600,21 +661,48 @@ export default function HomePage() {
     [activeSnapshot, snappedTemplates],
   );
 
-  const displayRouteData = mode === 'historical' ? historicalRouteData : routeData;
+  const fallbackRouteData = useMemo(
+    () => buildFallbackRouteData(snappedFallbackRoutes),
+    [snappedFallbackRoutes],
+  );
+
+  const displayRouteData =
+    mode === 'historical'
+      ? historicalRouteData
+      : mode === 'fallback'
+        ? fallbackRouteData
+        : routeData;
+
+  const fallbackSelectedRouteId = useMemo(() => {
+    const availableIds = new Set([
+      FALLBACK_SAMPLE.routeData.recommended.id,
+      ...FALLBACK_SAMPLE.routeData.alternatives.map((route) => route.id),
+    ]);
+
+    return selectedRouteId && availableIds.has(selectedRouteId)
+      ? selectedRouteId
+      : FALLBACK_SAMPLE.defaultSelectedRouteId;
+  }, [selectedRouteId]);
+
+  const fallbackFireImpact =
+    mode === 'fallback' ? FALLBACK_SAMPLE.routeImpacts[fallbackSelectedRouteId] ?? null : null;
 
   useEffect(() => {
-    const defaultRouteId = displayRouteData?.recommended.id;
+    const defaultRouteId =
+      mode === 'fallback'
+        ? FALLBACK_SAMPLE.defaultSelectedRouteId
+        : displayRouteData?.recommended.id;
     if (!defaultRouteId) return;
 
     const availableIds = new Set([
       defaultRouteId,
-      ...displayRouteData.alternatives.map((route) => route.id),
+      ...(displayRouteData?.alternatives.map((route) => route.id) ?? []),
     ]);
 
     if (!selectedRouteId || !availableIds.has(selectedRouteId)) {
       setSelectedRouteId(defaultRouteId);
     }
-  }, [displayRouteData, selectedRouteId]);
+  }, [displayRouteData, mode, selectedRouteId]);
 
   const routeGeometry = useMemo(() => {
     if (!displayRouteData) return null;
@@ -637,9 +725,20 @@ export default function HomePage() {
     }));
   }, [displayRouteData, selectedRouteId]);
 
-  const mapFireOverride = mode === 'historical' ? activeSnapshot?.geojson ?? null : liveFireOverride;
+  const mapFireOverride =
+    mode === 'historical'
+      ? activeSnapshot?.geojson ?? null
+      : mode === 'fallback'
+        ? fallbackFireOverlay
+        : liveFireOverride;
+  const mapEvacData = mode === 'fallback' ? fallbackEvacData : liveEvacData;
+  const mapSmokeData = mode === 'fallback' ? fallbackSmokeData : liveSmokeData;
   const routeBlocked =
-    mode === 'historical' ? Boolean(activeSnapshot?.routeBlocked) : Boolean(routeData?.fire_impact?.blocked);
+    mode === 'historical'
+      ? Boolean(activeSnapshot?.routeBlocked)
+      : mode === 'fallback'
+        ? Boolean(fallbackFireImpact?.blocked)
+        : Boolean(routeData?.fire_impact?.blocked);
   const sidebarBottomClass = mode === 'historical' ? 'bottom-28' : 'bottom-3';
 
   return (
@@ -682,13 +781,26 @@ export default function HomePage() {
         </div>
 
         <div className="ml-auto flex-shrink-0">
-          {mode === 'live' ? (
-            <StatusBanner status={statusData} updates={updates} />
-          ) : (
+          {mode === 'historical' ? (
             <div className="rounded-xl border border-white/15 bg-black/35 px-3 py-2">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Historical Showcase</p>
               <p className="text-xs font-semibold text-white">{historicalIncident?.name ?? 'Palisades Fire'}</p>
             </div>
+          ) : (
+            <StatusBanner
+              status={mode === 'live' ? statusData : null}
+              updates={mode === 'live' ? updates : []}
+              livePayload={
+                mode === 'fallback'
+                  ? {
+                      fetched_at: FALLBACK_SAMPLE.fetched_at,
+                      status: FALLBACK_SAMPLE.status,
+                      updates: FALLBACK_SAMPLE.updates,
+                      key_incidents: FALLBACK_SAMPLE.keyIncidents,
+                    }
+                  : null
+              }
+            />
           )}
         </div>
       </header>
@@ -700,8 +812,8 @@ export default function HomePage() {
           routeGeometry={routeGeometry}
           allRoutes={allRoutes}
           fireOverride={mapFireOverride}
-          evacuationData={liveEvacData}
-          smokeData={liveSmokeData}
+          evacuationData={mapEvacData}
+          smokeData={mapSmokeData}
           routeBlocked={routeBlocked}
           mapStyle={mapStyle}
           flyTo={flyTarget}
@@ -754,14 +866,24 @@ export default function HomePage() {
             onModeChange={setMode}
             travelMode={travelMode}
             onTravelModeChange={setTravelMode}
-            onRefreshLiveData={() => {
-              void loadLive();
-            }}
-            refreshingLiveData={refreshingLive}
-            liveLastUpdated={liveFetchedAt}
-            keyIncidents={keyIncidents}
+            onRefreshLiveData={
+              mode === 'live'
+                ? () => {
+                    void loadLive();
+                  }
+                : undefined
+            }
+            refreshingLiveData={mode === 'live' ? refreshingLive : false}
+            liveLastUpdated={mode === 'fallback' ? FALLBACK_SAMPLE.fetched_at : liveFetchedAt}
+            keyIncidents={mode === 'fallback' ? FALLBACK_SAMPLE.keyIncidents : keyIncidents}
             onFireClick={handleFireClick}
-            fireImpact={mode === 'live' ? routeData?.fire_impact ?? null : null}
+            fireImpact={
+              mode === 'live'
+                ? routeData?.fire_impact ?? null
+                : mode === 'fallback'
+                  ? fallbackFireImpact
+                  : null
+            }
             historicalNarrative={{
               title: historicalIncident?.name ?? 'Palisades fire progression',
               summary: historicalIncident?.description ?? 'Historical snapshots for narrative walkthrough.',
@@ -773,6 +895,15 @@ export default function HomePage() {
                 : activeSnapshot?.routeName
                   ? `Primary route remains open via ${activeSnapshot.routeName}.`
                   : undefined,
+            }}
+            fallbackNarrative={{
+              title: FALLBACK_SAMPLE.narrative.title,
+              summary: FALLBACK_SAMPLE.narrative.summary,
+              timestampLabel: FALLBACK_SAMPLE.narrative.timestampLabel,
+              routeNarrative:
+                fallbackSelectedRouteId === FALLBACK_SAMPLE.routeData.recommended.id
+                  ? 'The coastal sample route cuts through Topanga Canyon. Switch to Alternative 1 to see the canyon dodge.'
+                  : 'Alternative 1 swings northeast around Topanga Canyon, stays outside the sample evacuation ring, then reconnects westbound toward Ventura.',
             }}
           />
         </div>

@@ -6,7 +6,7 @@ import { searchPlaces } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { DataMode, FireImpact, GeocodingSuggestion, KeyIncident, Route, RouteResponse, TravelMode } from '@/types';
 
-type HistoricalNarrative = {
+type ModeNarrative = {
   title?: string;
   summary?: string;
   timestampLabel?: string;
@@ -33,7 +33,8 @@ type SidebarProps = {
   keyIncidents?: KeyIncident[];
   onFireClick?: (incidentName: string) => void;
   fireImpact?: FireImpact | null;
-  historicalNarrative?: HistoricalNarrative | null;
+  historicalNarrative?: ModeNarrative | null;
+  fallbackNarrative?: ModeNarrative | null;
   travelMode?: TravelMode;
   onTravelModeChange?: (mode: TravelMode) => void;
 };
@@ -273,12 +274,17 @@ function Sidebar({
   onFireClick,
   fireImpact,
   historicalNarrative,
+  fallbackNarrative,
   travelMode,
   onTravelModeChange,
 }: SidebarProps) {
   const resolvedMode = mode ?? 'live';
   const resolvedTravelMode = travelMode ?? 'driving';
   const handleModeChange = onModeChange;
+  const isLiveMode = resolvedMode === 'live';
+  const isFallbackMode = resolvedMode === 'fallback';
+  const isHistoricalMode = resolvedMode === 'historical';
+  const showsRoutePreview = !isHistoricalMode;
 
   const allRoutes = useMemo(() => {
     if (!routeData) return [] as Array<{ route: Route; title: string }>;
@@ -301,14 +307,14 @@ function Sidebar({
     <aside className="custom-scrollbar flex h-full flex-col overflow-y-auto rounded-2xl border border-white/15 bg-[linear-gradient(180deg,rgba(8,12,22,0.96),rgba(8,12,22,0.9))] shadow-[0_20px_70px_rgba(0,0,0,0.55)] backdrop-blur-sm">
       <div className="border-b border-white/10 p-4">
         <div className="mb-3 rounded-xl border border-white/10 bg-black/20 p-1">
-          <div className="grid grid-cols-2 gap-1">
+          <div className="grid grid-cols-3 gap-1">
             <button
               type="button"
-              aria-pressed={resolvedMode === 'live'}
+              aria-pressed={isLiveMode}
               onClick={() => handleModeChange?.('live')}
               className={cn(
                 'rounded-lg px-2 py-1.5 text-xs font-semibold transition',
-                resolvedMode === 'live'
+                isLiveMode
                   ? 'bg-orange-500/20 text-orange-100'
                   : 'text-slate-400 hover:bg-white/5 hover:text-slate-200',
               )}
@@ -317,11 +323,24 @@ function Sidebar({
             </button>
             <button
               type="button"
-              aria-pressed={resolvedMode === 'historical'}
+              aria-pressed={isFallbackMode}
+              onClick={() => handleModeChange?.('fallback')}
+              className={cn(
+                'rounded-lg px-2 py-1.5 text-xs font-semibold transition',
+                isFallbackMode
+                  ? 'bg-orange-500/20 text-orange-100'
+                  : 'text-slate-400 hover:bg-white/5 hover:text-slate-200',
+              )}
+            >
+              Sample Fallback
+            </button>
+            <button
+              type="button"
+              aria-pressed={isHistoricalMode}
               onClick={() => handleModeChange?.('historical')}
               className={cn(
                 'rounded-lg px-2 py-1.5 text-xs font-semibold transition',
-                resolvedMode === 'historical'
+                isHistoricalMode
                   ? 'bg-orange-500/20 text-orange-100'
                   : 'text-slate-400 hover:bg-white/5 hover:text-slate-200',
               )}
@@ -331,7 +350,7 @@ function Sidebar({
           </div>
         </div>
 
-        {resolvedMode === 'live' ? (
+        {isLiveMode ? (
           <>
             <div className="mb-3 rounded-xl border border-white/10 bg-black/20 p-3">
               <div className="flex items-center justify-between gap-2">
@@ -499,6 +518,25 @@ function Sidebar({
               </button>
             </form>
           </>
+        ) : isFallbackMode ? (
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Sample fallback</p>
+            <h3 className="mt-1 text-sm font-semibold text-white">
+              {fallbackNarrative?.title ?? 'Fallback sample scenario'}
+            </h3>
+            <p className="mt-1 text-xs leading-relaxed text-slate-300">
+              {fallbackNarrative?.summary ??
+                'Static fallback overlays and routes stay available when live dependencies are unavailable.'}
+            </p>
+            {(fallbackNarrative?.timestampLabel || fallbackNarrative?.routeNarrative) && (
+              <div className="mt-2 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-xs text-slate-300">
+                {fallbackNarrative.timestampLabel && <p>{fallbackNarrative.timestampLabel}</p>}
+                {fallbackNarrative.routeNarrative && (
+                  <p className="mt-0.5 text-slate-400">{fallbackNarrative.routeNarrative}</p>
+                )}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Pitch narrative</p>
@@ -519,11 +557,20 @@ function Sidebar({
         )}
       </div>
 
-      {resolvedMode === 'live' && (
+      {showsRoutePreview && (
         <div className="border-b border-white/10 p-4">
+          {isFallbackMode && fallbackNarrative?.routeNarrative && (
+            <div className="mb-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
+              <p className="text-xs font-semibold text-cyan-100">Fallback route note</p>
+              <p className="mt-1 text-xs text-cyan-50/90">{fallbackNarrative.routeNarrative}</p>
+            </div>
+          )}
+
           {fireImpact && (fireImpact.blocked || fireImpact.impacted_incidents.length > 0) && (
             <div className="mb-3 rounded-xl border border-red-500/25 bg-red-500/10 p-3">
-              <p className="text-xs font-semibold text-red-200">Live route impact detected</p>
+              <p className="text-xs font-semibold text-red-200">
+                {isFallbackMode ? 'Fallback route impact' : 'Live route impact detected'}
+              </p>
               <p className="mt-1 text-xs text-red-100/90">
                 {fireImpact.blocked ? 'Primary route intersects an active perimeter.' : 'Route has nearby fire impact.'}
               </p>
@@ -533,7 +580,9 @@ function Sidebar({
             </div>
           )}
 
-          <h3 className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Live Data Layers</h3>
+          <h3 className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+            {isFallbackMode ? 'Sample Layers' : 'Live Data Layers'}
+          </h3>
           <div className="grid grid-cols-2 gap-1.5">
             {overlayOptions.map((overlay) => {
               const active = activeOverlays.has(overlay.id);
@@ -558,7 +607,7 @@ function Sidebar({
         </div>
       )}
 
-      {resolvedMode === 'live' && allRoutes.length > 0 && (
+      {showsRoutePreview && allRoutes.length > 0 && (
         <div className="flex-1 p-4">
           <h3 className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
             Routes ({allRoutes.length})
@@ -575,12 +624,14 @@ function Sidebar({
             ))}
           </div>
           <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-            Routes avoid active fire perimeters. Select a route to preview on the map.
+            {isFallbackMode
+              ? 'Sample fallback routes are fixed. Alternative 1 bends north of Topanga Canyon before reconnecting west.'
+              : 'Routes avoid active fire perimeters. Select a route to preview on the map.'}
           </p>
         </div>
       )}
 
-      {resolvedMode === 'live' && allRoutes.length === 0 && !loading && (
+      {showsRoutePreview && allRoutes.length === 0 && !loading && (
         <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-slate-900/60">
             <svg
@@ -595,12 +646,18 @@ function Sidebar({
               <path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0020 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
             </svg>
           </div>
-          <p className="text-sm font-medium text-slate-400">Enter a destination</p>
-          <p className="mt-1 text-xs text-slate-500">Find a route that avoids active wildfire hazards.</p>
+          <p className="text-sm font-medium text-slate-400">
+            {isFallbackMode ? 'Sample route unavailable' : 'Enter a destination'}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {isFallbackMode
+              ? 'The fallback scenario should populate fixed routes and overlays.'
+              : 'Find a route that avoids active wildfire hazards.'}
+          </p>
         </div>
       )}
 
-      {resolvedMode === 'historical' && (
+      {isHistoricalMode && (
         <div className="flex-1 p-4">
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-slate-300">
             <p className="font-semibold text-white">Historical mode active</p>

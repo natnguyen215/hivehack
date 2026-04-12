@@ -466,7 +466,7 @@ function MapView({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const managedRouteIdsRef = useRef<Set<string>>(new Set());
-  const lastBoundsKeyRef = useRef<Record<DataMode, string>>({ live: '', historical: '' });
+  const lastBoundsKeyRef = useRef<Record<DataMode, string>>({ live: '', fallback: '', historical: '' });
 
   const [mapReady, setMapReady] = useState(false);
 
@@ -537,7 +537,7 @@ function MapView({
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    if (resolvedMode === 'live' && fireOverride) {
+    if ((resolvedMode === 'live' || resolvedMode === 'fallback') && fireOverride) {
       ensureFireLayers(
         map,
         LIVE_FIRE_SOURCE_ID,
@@ -555,7 +555,7 @@ function MapView({
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    if (resolvedMode === 'live' && evacuationData) {
+    if ((resolvedMode === 'live' || resolvedMode === 'fallback') && evacuationData) {
       ensureEvacLayers(map, evacuationData, activeOverlays.has('evacuation_zones'));
     } else {
       const vis = 'none';
@@ -568,7 +568,7 @@ function MapView({
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    if (resolvedMode === 'live' && smokeData) {
+    if ((resolvedMode === 'live' || resolvedMode === 'fallback') && smokeData) {
       ensureSmokeLayers(map, smokeData, activeOverlays.has('smoke_plumes'));
     } else {
       if (map.getLayer(SMOKE_FILL_LAYER_ID)) map.setLayoutProperty(SMOKE_FILL_LAYER_ID, 'visibility', 'none');

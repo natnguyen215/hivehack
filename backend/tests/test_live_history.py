@@ -4,7 +4,102 @@ from urllib.parse import parse_qs, urlparse
 
 from app import fire_data
 from app import main
+from app.historical_data import load_palisades_history
 from app.models import RouteRequest
+
+
+def _segments(points: list[list[float]]) -> list[tuple[list[float], list[float]]]:
+    return list(zip(points, points[1:]))
+
+
+def _orientation(a: list[float], b: list[float], c: list[float]) -> float:
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+
+def _on_segment(a: list[float], b: list[float], point: list[float]) -> bool:
+    epsilon = 1e-9
+    return (
+        min(a[0], b[0]) - epsilon <= point[0] <= max(a[0], b[0]) + epsilon
+        and min(a[1], b[1]) - epsilon <= point[1] <= max(a[1], b[1]) + epsilon
+        and abs(_orientation(a, b, point)) <= epsilon
+    )
+
+
+def _segments_intersect(
+    a: list[float],
+    b: list[float],
+    c: list[float],
+    d: list[float],
+) -> bool:
+    epsilon = 1e-9
+    o1 = _orientation(a, b, c)
+    o2 = _orientation(a, b, d)
+    o3 = _orientation(c, d, a)
+    o4 = _orientation(c, d, b)
+
+    if (
+        ((o1 > epsilon and o2 < -epsilon) or (o1 < -epsilon and o2 > epsilon))
+        and ((o3 > epsilon and o4 < -epsilon) or (o3 < -epsilon and o4 > epsilon))
+    ):
+        return True
+
+    return any(
+        (
+            _on_segment(a, b, c),
+            _on_segment(a, b, d),
+            _on_segment(c, d, a),
+            _on_segment(c, d, b),
+        )
+    )
+
+
+def _point_in_ring(point: list[float], ring: list[list[float]]) -> bool:
+    x, y = point
+    inside = False
+    previous_index = len(ring) - 1
+
+    for index, current in enumerate(ring):
+        previous = ring[previous_index]
+        intersects = (
+            (current[1] > y) != (previous[1] > y)
+            and x
+            < (previous[0] - current[0]) * (y - current[1]) / ((previous[1] - current[1]) or 1e-12)
+            + current[0]
+        )
+        if intersects:
+            inside = not inside
+        previous_index = index
+
+    return inside
+
+
+def _line_intersects_ring(line: list[list[float]], ring: list[list[float]]) -> bool:
+    for start, end in _segments(line):
+        if _point_in_ring(start, ring) or _point_in_ring(end, ring):
+            return True
+
+        for ring_start, ring_end in _segments(ring):
+            if _segments_intersect(start, end, ring_start, ring_end):
+                return True
+
+    return False
+
+
+def _polygon_rings(geometry: dict) -> list[list[list[float]]]:
+    if geometry.get("type") == "Polygon":
+        return [geometry["coordinates"][0]]
+    if geometry.get("type") == "MultiPolygon":
+        return [polygon[0] for polygon in geometry["coordinates"]]
+    return []
+
+
+def _route_intersects_snapshot(snapshot: dict) -> bool:
+    line = snapshot["routeGeometry"]["coordinates"]
+    for feature in snapshot["geojson"].get("features", []):
+        for ring in _polygon_rings(feature.get("geometry", {})):
+            if _line_intersects_ring(line, ring):
+                return True
+    return False
 
 
 def test_get_live_uses_live_perimeters(monkeypatch) -> None:
@@ -182,6 +277,18 @@ def test_get_history_palisades_uses_loader(monkeypatch) -> None:
     assert response.incident.id == "palisades-2025-calfd-000738"
     assert response.snapshots[0].label == "Checkpoint 1"
     assert response.snapshots[0].routeRisk == "low"
+
+
+def test_historical_snapshot_routes_stay_outside_fire_perimeters() -> None:
+    payload = load_palisades_history()
+
+    intersecting_labels = [
+        snapshot["label"]
+        for snapshot in payload["snapshots"]
+        if _route_intersects_snapshot(snapshot)
+    ]
+
+    assert intersecting_labels == []
 
 
 def test_get_routes_handles_missing_shapely(monkeypatch) -> None:

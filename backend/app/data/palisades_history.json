@@ -1152,9 +1152,9 @@
           }
         ]
       },
-      "routeBlocked": false,
-      "routeName": "US-101 Coastal",
-      "routeRisk": "low",
+      "routeBlocked": true,
+      "routeName": "I-405 N to US-101 W (Rerouted)",
+      "routeRisk": "moderate",
       "routeGeometry": {
         "type": "LineString",
         "coordinates": [
@@ -1163,24 +1163,28 @@
             34.0522
           ],
           [
-            -118.395,
-            34.018
+            -118.378,
+            34.029
           ],
           [
             -118.4725,
             34.028
           ],
           [
-            -118.518,
-            34.039
+            -118.469,
+            34.089
           ],
           [
-            -118.601,
-            34.046
+            -118.47,
+            34.156
           ],
           [
-            -118.807,
-            34.153
+            -118.606,
+            34.171
+          ],
+          [
+            -118.794,
+            34.207
           ],
           [
             -119.04,
@@ -3466,9 +3470,9 @@
           }
         ]
       },
-      "routeBlocked": false,
-      "routeName": "US-101 Coastal",
-      "routeRisk": "low",
+      "routeBlocked": true,
+      "routeName": "I-405 N to US-101 W (Rerouted)",
+      "routeRisk": "moderate",
       "routeGeometry": {
         "type": "LineString",
         "coordinates": [
@@ -3477,24 +3481,28 @@
             34.0522
           ],
           [
-            -118.395,
-            34.018
+            -118.378,
+            34.029
           ],
           [
             -118.4725,
             34.028
           ],
           [
-            -118.518,
-            34.039
+            -118.469,
+            34.089
           ],
           [
-            -118.601,
-            34.046
+            -118.47,
+            34.156
           ],
           [
-            -118.807,
-            34.153
+            -118.606,
+            34.171
+          ],
+          [
+            -118.794,
+            34.207
           ],
           [
             -119.04,
