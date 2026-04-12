@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useRef, useMemo, useState } from 'react';
 import type { LiveUpdate, WildfireStatus } from '@/types';
 
 type LiveStatusLike = Partial<WildfireStatus> & {
@@ -68,6 +68,20 @@ function formatBannerTimestamp(value: string | null): string | null {
 
 function StatusBanner({ status = null, updates = [], livePayload = null }: StatusBannerProps) {
   const [expanded, setExpanded] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setExpanded(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [expanded]);
 
   const effectiveStatus = livePayload?.status ?? status;
   const effectiveUpdates = livePayload?.updates ?? updates;
@@ -95,7 +109,7 @@ function StatusBanner({ status = null, updates = [], livePayload = null }: Statu
   );
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <button
         type="button"
         onClick={() => setExpanded((open) => !open)}
