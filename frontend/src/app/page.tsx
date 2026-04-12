@@ -281,6 +281,7 @@ export default function HomePage() {
   );
   const [historicalSnapshots, setHistoricalSnapshots] = useState<FireSnapshot[]>(FIRE_SNAPSHOTS);
   const [loadingRoute, setLoadingRoute] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -498,6 +499,7 @@ export default function HomePage() {
     if (!origin.trim() || !destination.trim()) return;
 
     setLoadingRoute(true);
+    setRouteError(null);
     try {
       // Resolve coordinates for origin and destination
       const resolvedOrigin = originCoords ?? (await geocodePlace(origin));
@@ -553,6 +555,7 @@ export default function HomePage() {
       setSelectedRouteId(response.recommended.id);
     } catch {
       setRouteData(null);
+      setRouteError('Could not find routes. Check your connection and try again.');
     } finally {
       setLoadingRoute(false);
     }
@@ -725,6 +728,7 @@ export default function HomePage() {
             keyIncidents={keyIncidents}
             onFireClick={handleFireClick}
             fireImpact={mode === 'live' ? routeData?.fire_impact ?? null : null}
+            routeError={mode === 'live' ? routeError : null}
             historicalNarrative={{
               title: historicalIncident?.name ?? 'Palisades fire progression',
               summary: historicalIncident?.description ?? 'Historical snapshots for narrative walkthrough.',

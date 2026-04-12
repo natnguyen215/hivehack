@@ -36,6 +36,7 @@ type SidebarProps = {
   historicalNarrative?: HistoricalNarrative | null;
   travelMode?: TravelMode;
   onTravelModeChange?: (mode: TravelMode) => void;
+  routeError?: string | null;
 };
 
 type OverlayOption = {
@@ -51,9 +52,9 @@ const overlayOptions: OverlayOption[] = [
 ];
 
 const riskColors: Record<string, { bg: string; text: string; border: string }> = {
-  low: { bg: 'bg-emerald-500/15', text: 'text-emerald-300', border: 'border-emerald-500/35' },
-  moderate: { bg: 'bg-amber-500/15', text: 'text-amber-300', border: 'border-amber-500/35' },
-  high: { bg: 'bg-red-500/15', text: 'text-red-300', border: 'border-red-500/35' },
+  low: { bg: 'bg-emerald-500/20', text: 'text-emerald-300', border: 'border-emerald-500/50' },
+  moderate: { bg: 'bg-amber-500/20', text: 'text-amber-300', border: 'border-amber-500/50' },
+  high: { bg: 'bg-red-500/20', text: 'text-red-300', border: 'border-red-500/50' },
 };
 
 function formatLastUpdated(value: string | null | undefined): string {
@@ -151,6 +152,7 @@ function PlaceAutocomplete({
 }) {
   const [suggestions, setSuggestions] = useState<GeocodingSuggestion[]>([]);
   const [open, setOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
@@ -165,6 +167,7 @@ function PlaceAutocomplete({
       abortRef.current?.abort();
       setSuggestions([]);
       setOpen(false);
+      setHighlightedIndex(-1);
       return;
     }
 
@@ -182,14 +185,40 @@ function PlaceAutocomplete({
           if (requestIdRef.current !== requestId) return;
           setSuggestions(results);
           setOpen(results.length > 0);
+          setHighlightedIndex(-1);
         } catch {
           if (requestIdRef.current !== requestId) return;
           setSuggestions([]);
           setOpen(false);
+          setHighlightedIndex(-1);
         }
       })();
     }, 180);
   }, []);
+
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open || suggestions.length === 0) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setHighlightedIndex((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setHighlightedIndex((i) => Math.max(i - 1, 0));
+    } else if (event.key === 'Enter' && highlightedIndex >= 0) {
+      event.preventDefault();
+      const selected = suggestions[highlightedIndex];
+      if (selected) {
+        onChange(selected.place_name, selected.center);
+        setOpen(false);
+        setSuggestions([]);
+        setHighlightedIndex(-1);
+      }
+    } else if (event.key === 'Escape') {
+      setOpen(false);
+      setHighlightedIndex(-1);
+    }
+  }, [open, suggestions, highlightedIndex, onChange]);
 
   useEffect(() => {
     return () => {
@@ -223,6 +252,7 @@ function PlaceAutocomplete({
           onFocus={() => {
             if (suggestions.length > 0) setOpen(true);
           }}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className="w-full bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none"
         />
@@ -230,7 +260,7 @@ function PlaceAutocomplete({
 
       {open && (
         <ul className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-white/10 bg-slate-950 py-1 shadow-2xl shadow-black/50">
-          {suggestions.map((suggestion) => (
+          {suggestions.map((suggestion, index) => (
             <li key={`${suggestion.place_name}-${suggestion.center.join(',')}`}>
               <button
                 type="button"
@@ -239,8 +269,15 @@ function PlaceAutocomplete({
                   onChange(suggestion.place_name, suggestion.center);
                   setOpen(false);
                   setSuggestions([]);
+                  setHighlightedIndex(-1);
                 }}
-                className="w-full px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-orange-500/15 hover:text-white"
+                onMouseEnter={() => setHighlightedIndex(index)}
+                className={cn(
+                  'w-full px-3 py-2 text-left text-sm text-slate-200 transition',
+                  index === highlightedIndex
+                    ? 'bg-orange-500/20 text-white'
+                    : 'hover:bg-orange-500/15 hover:text-white',
+                )}
               >
                 {suggestion.place_name}
               </button>
@@ -275,6 +312,7 @@ function Sidebar({
   historicalNarrative,
   travelMode,
   onTravelModeChange,
+  routeError,
 }: SidebarProps) {
   const resolvedMode = mode ?? 'live';
   const resolvedTravelMode = travelMode ?? 'driving';
@@ -472,7 +510,7 @@ function Sidebar({
               <button
                 type="submit"
                 disabled={loading || !destination.trim()}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition hover:brightness-110 disabled:opacity-50 disabled:shadow-none"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
               >
                 {loading ? (
                   <>
@@ -498,6 +536,11 @@ function Sidebar({
                 )}
               </button>
             </form>
+            {routeError && (
+              <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                {routeError}
+              </p>
+            )}
           </>
         ) : (
           <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">
