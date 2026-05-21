@@ -45,6 +45,8 @@ type OverlayOption = {
   swatchClass: string;
 };
 
+const INCIDENTS_PAGE_SIZE = 5;
+
 const overlayOptions: OverlayOption[] = [
   { id: 'fire_perimeters', label: 'Fire Perimeters', swatchClass: 'bg-red-400' },
   { id: 'evacuation_zones', label: 'Evacuation Zones', swatchClass: 'bg-yellow-400' },
@@ -153,6 +155,7 @@ function PlaceAutocomplete({
   const [suggestions, setSuggestions] = useState<GeocodingSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
@@ -186,11 +189,14 @@ function PlaceAutocomplete({
           setSuggestions(results);
           setOpen(results.length > 0);
           setHighlightedIndex(-1);
-        } catch {
+          setSearchError(null);
+        } catch (error) {
           if (requestIdRef.current !== requestId) return;
+          console.error('Geocoding search failed:', error);
           setSuggestions([]);
           setOpen(false);
           setHighlightedIndex(-1);
+          setSearchError('Search unavailable — check connection');
         }
       })();
     }, 180);
@@ -248,6 +254,7 @@ function PlaceAutocomplete({
           onChange={(event) => {
             onChange(event.target.value);
             fetchSuggestions(event.target.value);
+            setSearchError(null);
           }}
           onFocus={() => {
             if (suggestions.length > 0) setOpen(true);
@@ -256,7 +263,29 @@ function PlaceAutocomplete({
           placeholder={placeholder}
           className="w-full bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none"
         />
+        {value && (
+          <button
+            type="button"
+            aria-label={`Clear ${label.toLowerCase()}`}
+            onClick={() => {
+              onChange('');
+              setSuggestions([]);
+              setOpen(false);
+              setHighlightedIndex(-1);
+              setSearchError(null);
+            }}
+            className="flex-shrink-0 rounded text-slate-500 transition hover:text-slate-300"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
+
+      {searchError && (
+        <p className="mt-1 text-xs text-red-400">{searchError}</p>
+      )}
 
       {open && (
         <ul className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-white/10 bg-slate-950 py-1 shadow-2xl shadow-black/50">
@@ -316,7 +345,7 @@ function Sidebar({
 }: SidebarProps) {
   const resolvedMode = mode ?? 'live';
   const resolvedTravelMode = travelMode ?? 'driving';
-  const handleModeChange = onModeChange;
+  const [showAllIncidents, setShowAllIncidents] = useState(false);
 
   const allRoutes = useMemo(() => {
     if (!routeData) return [] as Array<{ route: Route; title: string }>;
@@ -343,7 +372,7 @@ function Sidebar({
             <button
               type="button"
               aria-pressed={resolvedMode === 'live'}
-              onClick={() => handleModeChange?.('live')}
+              onClick={() => onModeChange?.('live')}
               className={cn(
                 'rounded-lg px-2 py-1.5 text-xs font-semibold transition',
                 resolvedMode === 'live'
@@ -356,7 +385,7 @@ function Sidebar({
             <button
               type="button"
               aria-pressed={resolvedMode === 'historical'}
-              onClick={() => handleModeChange?.('historical')}
+              onClick={() => onModeChange?.('historical')}
               className={cn(
                 'rounded-lg px-2 py-1.5 text-xs font-semibold transition',
                 resolvedMode === 'historical'
@@ -396,7 +425,7 @@ function Sidebar({
                     </span>
                   </div>
                   <ul className="custom-scrollbar max-h-48 space-y-1 overflow-y-auto pr-0.5">
-                    {keyIncidents.map((incident, index) => {
+                    {keyIncidents.slice(0, showAllIncidents ? undefined : INCIDENTS_PAGE_SIZE).map((incident, index) => {
                       const severityColor =
                         incident.severity === 'critical'
                           ? 'text-red-400'
@@ -434,6 +463,15 @@ function Sidebar({
                       );
                     })}
                   </ul>
+                  {keyIncidents.length > INCIDENTS_PAGE_SIZE && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllIncidents((v) => !v)}
+                      className="mt-1.5 w-full rounded-md border border-white/10 bg-white/[0.03] py-1 text-[11px] font-medium text-slate-400 transition hover:border-white/20 hover:text-slate-200"
+                    >
+                      {showAllIncidents ? 'Show less' : `Show all ${keyIncidents.length} incidents`}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -453,7 +491,20 @@ function Sidebar({
               />
 
               <div className="flex justify-center">
-                <div className="h-3 w-px bg-white/15" />
+                <button
+                  type="button"
+                  aria-label="Swap origin and destination"
+                  onClick={() => {
+                    const prevOrigin = origin;
+                    onOriginChange(destination);
+                    onDestinationChange(prevOrigin);
+                  }}
+                  className="rounded-md border border-white/10 bg-white/[0.04] p-1 text-slate-500 transition hover:border-white/20 hover:text-slate-300"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
+                  </svg>
+                </button>
               </div>
 
               <PlaceAutocomplete

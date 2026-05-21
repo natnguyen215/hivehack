@@ -32,13 +32,31 @@ This repo has two apps plus Docker orchestration:
 - Backend routing and fire ingestion are hardened with fallbacks so missing heavy deps or upstream ArcGIS issues degrade gracefully instead of hard-failing endpoints.
 
 ## API Surface (Current)
-- `GET /health`
-- `GET /api/status`
-- `GET /api/overlays`
-- `GET /api/updates`
-- `GET /api/live`
-- `GET /api/history/palisades`
-- `POST /api/routes` (supports `mode` and optional `fire_impact` response metadata)
+All application endpoints are versioned under `/api/v1/`. The unversioned `/api/*`
+paths are kept as 301 redirects for backwards compatibility (see Versioning Policy below).
+
+- `GET /health` (unversioned — health checks are not versioned)
+- `GET /api/v1/status`
+- `GET /api/v1/overlays`
+- `GET /api/v1/updates`
+- `GET /api/v1/live`
+- `GET /api/v1/history/palisades`
+- `POST /api/v1/routes` (supports `mode` and optional `fire_impact` response metadata)
+- `GET /api/v1/proxy/directions/{profile}/{coordinates}` (Mapbox Directions proxy)
+- `GET /api/v1/proxy/geocoding/suggest` (Mapbox Geocoding proxy)
+
+## API Versioning Policy
+- **Current version**: `v1` — prefix all new routes `/api/v1/<resource>`.
+- **Introducing a new version**: add a `v2` prefix for breaking changes; keep `v1` routes
+  alive with 301 redirects pointing to the `v2` equivalents during a deprecation window.
+- **Never remove a versioned prefix** without a documented deprecation notice and a
+  migration window for clients.
+- **Legacy redirects**: `/api/<path>` → `/api/v1/<path>` (301). These exist solely for
+  clients that have not yet updated; new code must call `/api/v1/*` directly. POST
+  redirects use 301 — note that some HTTP clients will downgrade the method to GET on
+  follow; clients calling `POST /api/routes` should migrate to `POST /api/v1/routes`.
+- **`/health`** is intentionally unversioned — it is a platform-level probe, not an
+  application API.
 
 ## Build, Test, and Development Commands
 Frontend (run in `frontend/`):

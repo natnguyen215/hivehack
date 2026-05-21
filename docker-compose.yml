@@ -22,10 +22,15 @@ services:
     build: ./backend
     container_name: ember-backend
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://ember:ember@postgres:5432/emberpath}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      # Must be set in .env at repo root — no default, required
+      - DATABASE_URL=${DATABASE_URL}
+      # Must be set in .env at repo root — no default, required
+      - REDIS_URL=${REDIS_URL}
       - ROUTING_PROVIDER=${ROUTING_PROVIDER:-osm}
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
+      # Must be set in .env at repo root — used to HMAC-sign cache keys
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOW_MOCK_FALLBACK=${ALLOW_MOCK_FALLBACK:-true}
     ports:
       - "8000:8000"
     depends_on:

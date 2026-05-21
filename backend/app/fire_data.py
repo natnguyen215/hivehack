@@ -79,6 +79,33 @@ def _normalize_geometry(raw_geometry: dict[str, Any]) -> dict[str, Any]:
     return {"type": geom_type, "coordinates": coords}
 
 
+def _validate_coordinates(coords: Any) -> bool:
+    """Recursively check every [lon, lat] pair in a GeoJSON coordinate tree."""
+    if isinstance(coords, (list, tuple)):
+        if not coords:
+            return True
+        first = coords[0]
+        if isinstance(first, (int, float)):
+            if len(coords) < 2:
+                return False
+            lon, lat = float(coords[0]), float(coords[1])
+            return -180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0
+        return all(_validate_coordinates(item) for item in coords)
+    return True
+
+
+def _validate_geometry(geometry: dict[str, Any]) -> bool:
+    """Return True if the geometry has valid coordinate ranges and is parseable by shapely."""
+    if not _validate_coordinates(geometry.get("coordinates", [])):
+        return False
+    if shape is not None:
+        try:
+            shape(geometry)
+        except Exception:
+            return False
+    return True
+
+
 def _simplify_geometry(geometry: dict[str, Any], tolerance: float = 0.0006) -> dict[str, Any]:
     if shape is None or mapping is None:
         return geometry
@@ -136,6 +163,11 @@ def _normalize_feature(feature: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     normalized_geometry = _normalize_geometry(geometry)
+    if not _validate_geometry(normalized_geometry):
+        props = feature.get("properties", {})
+        name = props.get("IncidentName") or props.get("incidentName") or props.get("OBJECTID") or "unknown"
+        logger.warning("Dropping fire feature '%s' — invalid coordinates or unparseable geometry", name)
+        return None
     simplified_geometry = _simplify_geometry(normalized_geometry)
 
     props = feature.get("properties", {})
@@ -235,6 +267,11 @@ def _normalize_smoke_feature(feature: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     normalized_geometry = _normalize_geometry(geometry)
+    if not _validate_geometry(normalized_geometry):
+        props = feature.get("properties", {})
+        name = props.get("OBJECTID") or "unknown"
+        logger.warning("Dropping smoke feature '%s' — invalid coordinates or unparseable geometry", name)
+        return None
     simplified_geometry = _simplify_geometry(normalized_geometry, tolerance=0.002)
 
     props = feature.get("properties", {})

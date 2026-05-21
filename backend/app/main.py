@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Any, List
+from urllib.parse import quote
 
 try:
     import psycopg2
@@ -11,11 +15,27 @@ except ImportError:  # pragma: no cover - optional in lightweight local runs
     psycopg2 = None
 
 try:
+    import httpx
+except ImportError:  # pragma: no cover - optional in lightweight local runs
+    httpx = None
+
+try:
     import redis
 except ImportError:  # pragma: no cover - optional in lightweight local runs
     redis = None
-from fastapi import FastAPI, HTTPException
+
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+    from slowapi.util import get_remote_address
+    _slowapi_available = True
+except ImportError:  # pragma: no cover - installed via requirements.txt
+    _slowapi_available = False
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 try:
     from pydantic_settings import BaseSettings
 except ImportError:  # pragma: no cover - optional in lightweight local runs
@@ -66,24 +86,41 @@ from .models import (
 logger = logging.getLogger("emberpath")
 logging.basicConfig(level=logging.INFO)
 
+# Module-level cache for live fire perimeter data (avoids hammering ArcGIS on every request)
+_fire_perimeter_cache: dict[str, Any] | None = None
+_fire_perimeter_cache_ts: float = 0.0
+_FIRE_PERIMETER_TTL = 60.0
+
+if _slowapi_available:
+    limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
+
 
 class Settings(BaseSettings):
     database_url: str = "postgresql://ember:ember@postgres:5432/emberpath"
     redis_url: str = "redis://redis:6379/0"
     allowed_origins: List[str] = ["http://localhost:3000"]
+    secret_key: str = "dev-secret-change-me"
+    mapbox_token: str = ""
+    allow_mock_fallback: bool = True
 
 
 settings = Settings()
 
 app = FastAPI(title="EmberPath Mock API", version="0.1.0")
 
+if _slowapi_available:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
+
+if _slowapi_available:
+    app.add_middleware(SlowAPIMiddleware)
 
 
 def _ping_postgres() -> None:
@@ -135,6 +172,19 @@ async def startup_event() -> None:
 
 def _utc_now_iso() -> str:
     return datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
+
+
+def _get_cached_fire_perimeters() -> dict[str, Any]:
+    global _fire_perimeter_cache, _fire_perimeter_cache_ts
+    if (
+        _fire_perimeter_cache is not None
+        and time.monotonic() - _fire_perimeter_cache_ts < _FIRE_PERIMETER_TTL
+    ):
+        return _fire_perimeter_cache
+    data = fetch_live_fire_perimeters()
+    _fire_perimeter_cache = data
+    _fire_perimeter_cache_ts = time.monotonic()
+    return data
 
 
 def _serialize_route_option(option: dict[str, Any]) -> dict[str, Any]:
@@ -280,8 +330,11 @@ def _detect_fire_impact(
 ) -> FireImpact:
     route_geom = _route_geometry(route_option)
     if route_geom is None:
+        # Conservative default: treat unextractable geometry as potentially unsafe
+        # rather than assuming safe, to avoid routing users into unverified areas.
+        logger.warning("Could not extract route geometry; treating route as blocked")
         return FireImpact(
-            blocked=False,
+            blocked=True,
             impacted_incidents=[],
             overlap_segments=0,
         )
@@ -347,6 +400,8 @@ def _compute_route_options(
     fire_geojson: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     if routing is None:
+        if not settings.allow_mock_fallback:
+            raise HTTPException(status_code=503, detail="Routing service unavailable")
         logger.warning("Routing engine unavailable; returning mock route options.")
         return _mock_route_options(request.origin, request.destination)
 
@@ -359,16 +414,22 @@ def _compute_route_options(
     except ValueError:
         raise
     except Exception as exc:
+        if not settings.allow_mock_fallback:
+            raise HTTPException(status_code=503, detail="Routing service unavailable") from exc
         logger.warning("Route computation failed; returning mock route options: %s", exc)
         return _mock_route_options(request.origin, request.destination)
 
     if not route_options:
+        if not settings.allow_mock_fallback:
+            raise HTTPException(status_code=503, detail="Routing service unavailable")
         logger.warning("Route computation returned no options; returning mock route options.")
         return _mock_route_options(request.origin, request.destination)
 
     primary = route_options[0]
     primary_coords = primary.get("coordinates")
     if primary.get("id") == "unavailable" or not primary_coords:
+        if not settings.allow_mock_fallback:
+            raise HTTPException(status_code=503, detail="Routing service unavailable")
         logger.warning("Route engine returned unavailable/empty route; returning mock route options.")
         return _mock_route_options(request.origin, request.destination)
 
@@ -380,12 +441,12 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/status", response_model=WildfireStatus)
+@app.get("/api/v1/status", response_model=WildfireStatus)
 def get_status() -> WildfireStatus:
     return WildfireStatus(**WILDFIRE_STATUS)
 
 
-@app.post("/api/routes", response_model=RouteResponse)
+@app.post("/api/v1/routes", response_model=RouteResponse)
 def get_routes(request: RouteRequest) -> RouteResponse:
     logger.info(
         "Route requested from %s overlays=%s mode=%s",
@@ -394,10 +455,15 @@ def get_routes(request: RouteRequest) -> RouteResponse:
         request.mode,
     )
     overlays_key = ",".join(sorted(request.overlays))
-    cache_key = (
+    cache_key_plaintext = (
         f"route:{request.origin}:{request.destination}:"
         f"{request.timestamp}:{request.mode}:{overlays_key}"
     )
+    cache_key = hmac.new(
+        settings.secret_key.encode(),
+        cache_key_plaintext.encode(),
+        hashlib.sha256,
+    ).hexdigest()
     cached = cache.get_cached_route(cache_key)
     if cached:
         return RouteResponse(**cached)
@@ -437,22 +503,23 @@ def get_routes(request: RouteRequest) -> RouteResponse:
     return RouteResponse(**result)
 
 
-@app.get("/api/overlays", response_model=OverlaysResponse)
+@app.get("/api/v1/overlays", response_model=OverlaysResponse)
 def get_overlays() -> OverlaysResponse:
     overlays = [GeoOverlay(**payload) for payload in OVERLAY_GEOJSON.values()]
     return OverlaysResponse(overlays=overlays)
 
 
-@app.get("/api/updates", response_model=list[LiveUpdate])
+@app.get("/api/v1/updates", response_model=list[LiveUpdate])
 def get_live_updates() -> list[LiveUpdate]:
     return [LiveUpdate(**update) for update in LIVE_UPDATES]
 
 
-@app.get("/api/live", response_model=LiveResponse)
-def get_live() -> LiveResponse:
+@app.get("/api/v1/live", response_model=LiveResponse)
+@(limiter.limit("5/minute") if _slowapi_available else lambda f: f)
+def get_live(request: Request) -> LiveResponse:
     fetched_at = _utc_now_iso()
     try:
-        fire_feature_collection = fetch_live_fire_perimeters()
+        fire_feature_collection = _get_cached_fire_perimeters()
         smoke_feature_collection: dict[str, Any] | None = None
         try:
             smoke_feature_collection = fetch_smoke_plumes()
@@ -476,7 +543,111 @@ def get_live() -> LiveResponse:
         return _fallback_live_response(fetched_at)
 
 
-@app.get("/api/history/palisades", response_model=HistoricalIncidentResponse)
+@app.get("/api/v1/history/palisades", response_model=HistoricalIncidentResponse)
 def get_history_palisades() -> HistoricalIncidentResponse:
     payload = load_palisades_history()
     return HistoricalIncidentResponse(**payload)
+
+
+@app.get("/api/v1/proxy/directions/{profile}/{coordinates:path}")
+async def proxy_directions(profile: str, coordinates: str, request: Request) -> Any:
+    if httpx is None:
+        raise HTTPException(status_code=503, detail="httpx is not installed")
+    if not settings.mapbox_token:
+        raise HTTPException(status_code=503, detail="MAPBOX_TOKEN not configured")
+
+    params = {k: v for k, v in request.query_params.items() if k != "access_token"}
+    params["access_token"] = settings.mapbox_token
+
+    url = f"https://api.mapbox.com/directions/v5/mapbox/{profile}/{coordinates}"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, params=params, timeout=10.0)
+
+    if not resp.is_success:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json()
+
+
+@app.get("/api/v1/proxy/geocoding/suggest")
+async def proxy_geocoding_suggest(
+    q: str,
+    proximity: str | None = None,
+    country: str | None = None,
+    limit: int = 5,
+) -> Any:
+    if httpx is None:
+        raise HTTPException(status_code=503, detail="httpx is not installed")
+    if not settings.mapbox_token:
+        raise HTTPException(status_code=503, detail="MAPBOX_TOKEN not configured")
+
+    params: dict[str, Any] = {
+        "access_token": settings.mapbox_token,
+        "types": "place,address,poi",
+        "bbox": "-124.48,32.53,-114.13,42.01",
+        "limit": str(limit),
+    }
+    if country:
+        params["country"] = country
+    if proximity:
+        params["proximity"] = proximity
+
+    url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{quote(q)}.json"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, params=params, timeout=10.0)
+
+    if not resp.is_success:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Legacy /api/* → /api/v1/* redirects (301 Moved Permanently)
+# Keeps existing clients working while they migrate to versioned paths.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/status")
+def redirect_status() -> RedirectResponse:
+    return RedirectResponse(url="/api/v1/status", status_code=301)
+
+
+@app.post("/api/routes")
+def redirect_routes() -> RedirectResponse:
+    return RedirectResponse(url="/api/v1/routes", status_code=301)
+
+
+@app.get("/api/overlays")
+def redirect_overlays() -> RedirectResponse:
+    return RedirectResponse(url="/api/v1/overlays", status_code=301)
+
+
+@app.get("/api/updates")
+def redirect_updates() -> RedirectResponse:
+    return RedirectResponse(url="/api/v1/updates", status_code=301)
+
+
+@app.get("/api/live")
+def redirect_live() -> RedirectResponse:
+    return RedirectResponse(url="/api/v1/live", status_code=301)
+
+
+@app.get("/api/history/palisades")
+def redirect_history_palisades() -> RedirectResponse:
+    return RedirectResponse(url="/api/v1/history/palisades", status_code=301)
+
+
+@app.get("/api/proxy/directions/{profile}/{coordinates:path}")
+def redirect_proxy_directions(profile: str, coordinates: str, request: Request) -> RedirectResponse:
+    qs = request.url.query
+    url = f"/api/v1/proxy/directions/{profile}/{coordinates}"
+    if qs:
+        url = f"{url}?{qs}"
+    return RedirectResponse(url=url, status_code=301)
+
+
+@app.get("/api/proxy/geocoding/suggest")
+def redirect_proxy_geocoding_suggest(request: Request) -> RedirectResponse:
+    qs = request.url.query
+    url = "/api/v1/proxy/geocoding/suggest"
+    if qs:
+        url = f"{url}?{qs}"
+    return RedirectResponse(url=url, status_code=301)

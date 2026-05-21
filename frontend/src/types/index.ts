@@ -40,7 +40,7 @@ export interface Route {
 export interface RouteResponse {
   recommended: Route;
   alternatives: Route[];
-  fire_impact?: FireImpact | null;
+  fire_impact: FireImpact | null;
 }
 
 export interface GeoOverlay {

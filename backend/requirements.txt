@@ -3,8 +3,10 @@ uvicorn[standard]
 pydantic
 pydantic-settings
 python-dotenv
+httpx
 psycopg2-binary
 redis
+slowapi
 osmnx==1.9.3
 networkx==3.3
 shapely==2.0.4
