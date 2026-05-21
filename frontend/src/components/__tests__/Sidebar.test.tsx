@@ -37,6 +37,7 @@ const mockRouteData = {
       },
     },
   ],
+  fire_impact: null,
 };
 
 function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {

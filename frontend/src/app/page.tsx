@@ -2,7 +2,10 @@
 
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type MapViewType from '@/components/MapView';
+import type TimelineSliderType from '@/components/TimelineSlider';
 
+import MapErrorBoundary from '@/components/MapErrorBoundary';
 import Sidebar from '@/components/Sidebar';
 import StatusBanner from '@/components/StatusBanner';
 import {
@@ -18,6 +21,7 @@ import {
   fetchStatus,
   fetchUpdates,
   geocodePlace,
+  reverseGeocode,
 } from '@/lib/api';
 import { FIRE_SNAPSHOTS } from '@/lib/fire-timeline';
 import type {
@@ -41,8 +45,13 @@ type FlyTarget = {
   key: number;
 };
 
-const MapView = dynamic(() => import('@/components/MapView'), { ssr: false });
-const TimelineSlider = dynamic(() => import('@/components/TimelineSlider'), { ssr: false });
+const MapView = dynamic<React.ComponentProps<typeof MapViewType>>(() => import('@/components/MapView'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full w-full animate-pulse bg-[#0d1117]" />
+  ),
+});
+const TimelineSlider = dynamic<React.ComponentProps<typeof TimelineSliderType>>(() => import('@/components/TimelineSlider'), { ssr: false });
 
 const DEFAULT_ORIGIN = 'Los Angeles, CA';
 const DEFAULT_OVERLAYS = ['fire_perimeters'] as const;
@@ -281,6 +290,7 @@ function buildHistoricalRouteData(
   return {
     recommended: routes[0],
     alternatives: routes.slice(1),
+    fire_impact: null,
   };
 }
 
@@ -326,6 +336,7 @@ export default function HomePage() {
   );
   const [historicalSnapshots, setHistoricalSnapshots] = useState<FireSnapshot[]>(FIRE_SNAPSHOTS);
   const [loadingRoute, setLoadingRoute] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -426,7 +437,7 @@ export default function HomePage() {
       // Deduplicate by coordinate key to avoid redundant API calls
       const seen = new Map<string, string[]>();
       for (const t of allTemplates) {
-        const key = JSON.stringify(t.coordinates);
+        const key = t.coordinates.map(([a, b]) => `${a},${b}`).join('|');
         if (!seen.has(key)) seen.set(key, []);
         seen.get(key)!.push(t.id);
       }
@@ -444,7 +455,7 @@ export default function HomePage() {
 
       await Promise.all([
         ...Array.from(seen.entries()).map(async ([key, ids]) => {
-          const coords = JSON.parse(key) as [number, number][];
+          const coords = key.split('|').map(s => s.split(',').map(Number)) as [number, number][];
           const dir = await fetchDirections(coords);
           if (dir && !cancelled) {
             const geom: RouteGeometry = { type: 'LineString', coordinates: dir.coordinates };
@@ -468,7 +479,11 @@ export default function HomePage() {
       if (!cancelled) setSnappedTemplates(results);
     }
 
-    snapTemplates();
+    snapTemplates().catch((err) => {
+      if (cancelled) return;
+      console.error(err);
+      setRouteError("Could not load historical route data.");
+    });
     return () => { cancelled = true; };
   }, [historicalSnapshots]);
 
@@ -509,6 +524,26 @@ export default function HomePage() {
       return Math.min(current, historicalSnapshots.length - 1);
     });
   }, [historicalSnapshots.length]);
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { longitude, latitude } = position.coords;
+        try {
+          const address = await reverseGeocode(longitude, latitude);
+          if (address) setOrigin(address);
+        } catch {
+          // Keep DEFAULT_ORIGIN
+        }
+      },
+      () => {
+        // Permission denied or unavailable — DEFAULT_ORIGIN already set
+      },
+      { timeout: 10000 },
+    );
+  }, []);
 
   const handleOriginChange = useCallback((value: string, coords?: [number, number]) => {
     setOrigin(value);
@@ -596,6 +631,7 @@ export default function HomePage() {
     if (!origin.trim() || !destination.trim()) return;
 
     setLoadingRoute(true);
+    setRouteError(null);
     try {
       // Resolve coordinates for origin and destination
       const resolvedOrigin = originCoords ?? (await geocodePlace(origin));
@@ -625,7 +661,7 @@ export default function HomePage() {
       }));
 
       // Check fire impact via backend if fire perimeters overlay is active
-      let fireImpact = undefined;
+      let fireImpact: RouteResponse['fire_impact'] = null;
       if (activeOverlays.has('fire_perimeters')) {
         try {
           const backendResponse = await fetchRoutes({
@@ -635,7 +671,7 @@ export default function HomePage() {
             timestamp: new Date().toISOString(),
             mode: 'live',
           });
-          fireImpact = backendResponse.fire_impact;
+          fireImpact = backendResponse.fire_impact ?? null;
         } catch {
           // Fire impact check failed — continue without it
         }
@@ -651,6 +687,7 @@ export default function HomePage() {
       setSelectedRouteId(response.recommended.id);
     } catch {
       setRouteData(null);
+      setRouteError('Could not find routes. Check your connection and try again.');
     } finally {
       setLoadingRoute(false);
     }
@@ -748,7 +785,7 @@ export default function HomePage() {
           type="button"
           onClick={() => setSidebarOpen((open) => !open)}
           className="flex-shrink-0 rounded-lg border border-white/10 bg-white/5 p-2 text-slate-200 transition hover:bg-white/10 hover:text-white"
-          aria-label="Toggle sidebar"
+          aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
         >
           <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
@@ -806,18 +843,20 @@ export default function HomePage() {
       </header>
 
       <div className="absolute inset-0">
-        <MapView
-          mode={mode}
-          activeOverlays={activeOverlays}
-          routeGeometry={routeGeometry}
-          allRoutes={allRoutes}
-          fireOverride={mapFireOverride}
-          evacuationData={mapEvacData}
-          smokeData={mapSmokeData}
-          routeBlocked={routeBlocked}
-          mapStyle={mapStyle}
-          flyTo={flyTarget}
-        />
+        <MapErrorBoundary>
+          <MapView
+            mode={mode}
+            activeOverlays={activeOverlays}
+            routeGeometry={routeGeometry}
+            allRoutes={allRoutes}
+            fireOverride={mapFireOverride}
+            evacuationData={mapEvacData}
+            smokeData={mapSmokeData}
+            routeBlocked={routeBlocked}
+            mapStyle={mapStyle}
+            flyTo={flyTarget}
+          />
+        </MapErrorBoundary>
         <button
           type="button"
           onClick={() => setMapStyle((s) => (s === 'grayscale' ? 'streets' : 'grayscale'))}
@@ -884,6 +923,7 @@ export default function HomePage() {
                   ? fallbackFireImpact
                   : null
             }
+            routeError={mode === 'live' ? routeError : null}
             historicalNarrative={{
               title: historicalIncident?.name ?? 'Palisades fire progression',
               summary: historicalIncident?.description ?? 'Historical snapshots for narrative walkthrough.',
@@ -917,5 +957,4 @@ export default function HomePage() {
     </div>
   );
 }
-
 

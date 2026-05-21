@@ -37,6 +37,7 @@ type SidebarProps = {
   fallbackNarrative?: ModeNarrative | null;
   travelMode?: TravelMode;
   onTravelModeChange?: (mode: TravelMode) => void;
+  routeError?: string | null;
 };
 
 type OverlayOption = {
@@ -45,6 +46,8 @@ type OverlayOption = {
   swatchClass: string;
 };
 
+const INCIDENTS_PAGE_SIZE = 5;
+
 const overlayOptions: OverlayOption[] = [
   { id: 'fire_perimeters', label: 'Fire Perimeters', swatchClass: 'bg-red-400' },
   { id: 'evacuation_zones', label: 'Evacuation Zones', swatchClass: 'bg-yellow-400' },
@@ -52,9 +55,9 @@ const overlayOptions: OverlayOption[] = [
 ];
 
 const riskColors: Record<string, { bg: string; text: string; border: string }> = {
-  low: { bg: 'bg-emerald-500/15', text: 'text-emerald-300', border: 'border-emerald-500/35' },
-  moderate: { bg: 'bg-amber-500/15', text: 'text-amber-300', border: 'border-amber-500/35' },
-  high: { bg: 'bg-red-500/15', text: 'text-red-300', border: 'border-red-500/35' },
+  low: { bg: 'bg-emerald-500/20', text: 'text-emerald-300', border: 'border-emerald-500/50' },
+  moderate: { bg: 'bg-amber-500/20', text: 'text-amber-300', border: 'border-amber-500/50' },
+  high: { bg: 'bg-red-500/20', text: 'text-red-300', border: 'border-red-500/50' },
 };
 
 function formatLastUpdated(value: string | null | undefined): string {
@@ -152,6 +155,8 @@ function PlaceAutocomplete({
 }) {
   const [suggestions, setSuggestions] = useState<GeocodingSuggestion[]>([]);
   const [open, setOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
@@ -166,6 +171,7 @@ function PlaceAutocomplete({
       abortRef.current?.abort();
       setSuggestions([]);
       setOpen(false);
+      setHighlightedIndex(-1);
       return;
     }
 
@@ -183,14 +189,43 @@ function PlaceAutocomplete({
           if (requestIdRef.current !== requestId) return;
           setSuggestions(results);
           setOpen(results.length > 0);
-        } catch {
+          setHighlightedIndex(-1);
+          setSearchError(null);
+        } catch (error) {
           if (requestIdRef.current !== requestId) return;
+          console.error('Geocoding search failed:', error);
           setSuggestions([]);
           setOpen(false);
+          setHighlightedIndex(-1);
+          setSearchError('Search unavailable — check connection');
         }
       })();
     }, 180);
   }, []);
+
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open || suggestions.length === 0) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setHighlightedIndex((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setHighlightedIndex((i) => Math.max(i - 1, 0));
+    } else if (event.key === 'Enter' && highlightedIndex >= 0) {
+      event.preventDefault();
+      const selected = suggestions[highlightedIndex];
+      if (selected) {
+        onChange(selected.place_name, selected.center);
+        setOpen(false);
+        setSuggestions([]);
+        setHighlightedIndex(-1);
+      }
+    } else if (event.key === 'Escape') {
+      setOpen(false);
+      setHighlightedIndex(-1);
+    }
+  }, [open, suggestions, highlightedIndex, onChange]);
 
   useEffect(() => {
     return () => {
@@ -220,18 +255,42 @@ function PlaceAutocomplete({
           onChange={(event) => {
             onChange(event.target.value);
             fetchSuggestions(event.target.value);
+            setSearchError(null);
           }}
           onFocus={() => {
             if (suggestions.length > 0) setOpen(true);
           }}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className="w-full bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none"
         />
+        {value && (
+          <button
+            type="button"
+            aria-label={`Clear ${label.toLowerCase()}`}
+            onClick={() => {
+              onChange('');
+              setSuggestions([]);
+              setOpen(false);
+              setHighlightedIndex(-1);
+              setSearchError(null);
+            }}
+            className="flex-shrink-0 rounded text-slate-500 transition hover:text-slate-300"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
+
+      {searchError && (
+        <p className="mt-1 text-xs text-red-400">{searchError}</p>
+      )}
 
       {open && (
         <ul className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-white/10 bg-slate-950 py-1 shadow-2xl shadow-black/50">
-          {suggestions.map((suggestion) => (
+          {suggestions.map((suggestion, index) => (
             <li key={`${suggestion.place_name}-${suggestion.center.join(',')}`}>
               <button
                 type="button"
@@ -240,8 +299,15 @@ function PlaceAutocomplete({
                   onChange(suggestion.place_name, suggestion.center);
                   setOpen(false);
                   setSuggestions([]);
+                  setHighlightedIndex(-1);
                 }}
-                className="w-full px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-orange-500/15 hover:text-white"
+                onMouseEnter={() => setHighlightedIndex(index)}
+                className={cn(
+                  'w-full px-3 py-2 text-left text-sm text-slate-200 transition',
+                  index === highlightedIndex
+                    ? 'bg-orange-500/20 text-white'
+                    : 'hover:bg-orange-500/15 hover:text-white',
+                )}
               >
                 {suggestion.place_name}
               </button>
@@ -277,6 +343,7 @@ function Sidebar({
   fallbackNarrative,
   travelMode,
   onTravelModeChange,
+  routeError,
 }: SidebarProps) {
   const resolvedMode = mode ?? 'live';
   const resolvedTravelMode = travelMode ?? 'driving';
@@ -285,6 +352,7 @@ function Sidebar({
   const isFallbackMode = resolvedMode === 'fallback';
   const isHistoricalMode = resolvedMode === 'historical';
   const showsRoutePreview = !isHistoricalMode;
+  const [showAllIncidents, setShowAllIncidents] = useState(false);
 
   const allRoutes = useMemo(() => {
     if (!routeData) return [] as Array<{ route: Route; title: string }>;
@@ -377,7 +445,7 @@ function Sidebar({
                     </span>
                   </div>
                   <ul className="custom-scrollbar max-h-48 space-y-1 overflow-y-auto pr-0.5">
-                    {keyIncidents.map((incident, index) => {
+                    {keyIncidents.slice(0, showAllIncidents ? undefined : INCIDENTS_PAGE_SIZE).map((incident, index) => {
                       const severityColor =
                         incident.severity === 'critical'
                           ? 'text-red-400'
@@ -415,6 +483,15 @@ function Sidebar({
                       );
                     })}
                   </ul>
+                  {keyIncidents.length > INCIDENTS_PAGE_SIZE && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllIncidents((v) => !v)}
+                      className="mt-1.5 w-full rounded-md border border-white/10 bg-white/[0.03] py-1 text-[11px] font-medium text-slate-400 transition hover:border-white/20 hover:text-slate-200"
+                    >
+                      {showAllIncidents ? 'Show less' : `Show all ${keyIncidents.length} incidents`}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -434,7 +511,20 @@ function Sidebar({
               />
 
               <div className="flex justify-center">
-                <div className="h-3 w-px bg-white/15" />
+                <button
+                  type="button"
+                  aria-label="Swap origin and destination"
+                  onClick={() => {
+                    const prevOrigin = origin;
+                    onOriginChange(destination);
+                    onDestinationChange(prevOrigin);
+                  }}
+                  className="rounded-md border border-white/10 bg-white/[0.04] p-1 text-slate-500 transition hover:border-white/20 hover:text-slate-300"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
+                  </svg>
+                </button>
               </div>
 
               <PlaceAutocomplete
@@ -491,7 +581,7 @@ function Sidebar({
               <button
                 type="submit"
                 disabled={loading || !destination.trim()}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition hover:brightness-110 disabled:opacity-50 disabled:shadow-none"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
               >
                 {loading ? (
                   <>
@@ -517,6 +607,11 @@ function Sidebar({
                 )}
               </button>
             </form>
+            {routeError && (
+              <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                {routeError}
+              </p>
+            )}
           </>
         ) : isFallbackMode ? (
           <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3">

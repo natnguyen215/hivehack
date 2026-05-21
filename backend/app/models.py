@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class WildfireStatus(BaseModel):
@@ -37,6 +37,22 @@ class RouteRequest(BaseModel):
     timestamp: str = "T+0"
     mode: Literal["live", "historical"] = "live"
 
+    @field_validator("origin", "destination", mode="before")
+    @classmethod
+    def validate_coordinate_pair(cls, v: Any) -> Any:
+        if not isinstance(v, (list, tuple)) or len(v) != 2:
+            return v
+        lng, lat = v
+        try:
+            lng, lat = float(lng), float(lat)
+        except (TypeError, ValueError):
+            raise ValueError("coordinate values must be numeric")
+        if not (-180 <= lng <= 180):
+            raise ValueError(f"longitude {lng} is out of range [-180, 180]")
+        if not (-90 <= lat <= 90):
+            raise ValueError(f"latitude {lat} is out of range [-90, 90]")
+        return v
+
 
 class FireImpact(BaseModel):
     blocked: bool = False
@@ -48,6 +64,13 @@ class RouteResponse(BaseModel):
     recommended: Route
     alternatives: List[Route]
     fire_impact: FireImpact | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def ensure_fire_impact_present(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "fire_impact" not in data:
+            data["fire_impact"] = None
+        return data
 
 
 class GeoOverlay(BaseModel):

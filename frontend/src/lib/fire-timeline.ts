@@ -20,15 +20,15 @@ export const FIRE_SNAPSHOTS: FireSnapshot[] = [
     routeGeometry: {
       type: 'LineString',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.3950, 34.0180],
-        [-118.4725, 34.0280],
-        [-118.5180, 34.0390],
-        [-118.6010, 34.0460],
-        [-118.8070, 34.1530],
-        [-119.0400, 34.2160],
-        [-119.2290, 34.2750],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.3950, 34.0180], // I-10 at La Cienega
+        [-118.4725, 34.0280], // I-10 / I-405 junction
+        [-118.5180, 34.0390], // near Pacific Palisades on US-101
+        [-118.6010, 34.0460], // US-101 Malibu junction
+        [-118.8070, 34.1530], // US-101 at Camarillo Springs
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.2290, 34.2750], // US-101 past Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
     geojson: {
@@ -62,15 +62,15 @@ export const FIRE_SNAPSHOTS: FireSnapshot[] = [
     routeGeometry: {
       type: 'LineString',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.3950, 34.0180],
-        [-118.4725, 34.0280],
-        [-118.5180, 34.0390],
-        [-118.6010, 34.0460],
-        [-118.8070, 34.1530],
-        [-119.0400, 34.2160],
-        [-119.2290, 34.2750],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.3950, 34.0180], // I-10 at La Cienega
+        [-118.4725, 34.0280], // I-10 / I-405 junction
+        [-118.5180, 34.0390], // near Pacific Palisades on US-101
+        [-118.6010, 34.0460], // US-101 Malibu junction
+        [-118.8070, 34.1530], // US-101 at Camarillo Springs
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.2290, 34.2750], // US-101 past Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
     geojson: {
@@ -104,16 +104,16 @@ export const FIRE_SNAPSHOTS: FireSnapshot[] = [
     routeGeometry: {
       type: 'LineString',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.3780, 34.0290],
-        [-118.4725, 34.0280],
-        [-118.4690, 34.0890],
-        [-118.4700, 34.1560],
-        [-118.6060, 34.1710],
-        [-118.7940, 34.2070],
-        [-119.0400, 34.2160],
-        [-119.2290, 34.2750],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.3780, 34.0290], // I-10 heading west
+        [-118.4725, 34.0280], // I-10 / I-405 interchange
+        [-118.4690, 34.0890], // I-405 at Getty Center / Sepulveda Pass
+        [-118.4700, 34.1560], // I-405 / US-101 junction (Sherman Oaks)
+        [-118.6060, 34.1710], // US-101 Woodland Hills
+        [-118.7940, 34.2070], // US-101 Thousand Oaks
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.2290, 34.2750], // US-101 past Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
     geojson: {
@@ -147,16 +147,16 @@ export const FIRE_SNAPSHOTS: FireSnapshot[] = [
     routeGeometry: {
       type: 'LineString',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.3780, 34.0290],
-        [-118.4725, 34.0280],
-        [-118.4690, 34.0890],
-        [-118.4700, 34.1560],
-        [-118.6060, 34.1710],
-        [-118.7940, 34.2070],
-        [-119.0400, 34.2160],
-        [-119.2290, 34.2750],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.3780, 34.0290], // I-10 heading west
+        [-118.4725, 34.0280], // I-10 / I-405 interchange
+        [-118.4690, 34.0890], // I-405 at Getty Center / Sepulveda Pass
+        [-118.4700, 34.1560], // I-405 / US-101 junction (Sherman Oaks)
+        [-118.6060, 34.1710], // US-101 Woodland Hills
+        [-118.7940, 34.2070], // US-101 Thousand Oaks
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.2290, 34.2750], // US-101 past Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
     geojson: {
@@ -190,16 +190,16 @@ export const FIRE_SNAPSHOTS: FireSnapshot[] = [
     routeGeometry: {
       type: 'LineString',
       coordinates: [
-        [-118.2437, 34.0522],
-        [-118.3780, 34.0290],
-        [-118.4725, 34.0280],
-        [-118.4690, 34.0890],
-        [-118.4700, 34.1560],
-        [-118.6060, 34.1710],
-        [-118.7940, 34.2070],
-        [-119.0400, 34.2160],
-        [-119.2290, 34.2750],
-        [-119.6982, 34.4208],
+        [-118.2437, 34.0522], // Downtown LA
+        [-118.3780, 34.0290], // I-10 heading west
+        [-118.4725, 34.0280], // I-10 / I-405 interchange
+        [-118.4690, 34.0890], // I-405 at Getty Center / Sepulveda Pass
+        [-118.4700, 34.1560], // I-405 / US-101 junction (Sherman Oaks)
+        [-118.6060, 34.1710], // US-101 Woodland Hills
+        [-118.7940, 34.2070], // US-101 Thousand Oaks
+        [-119.0400, 34.2160], // US-101 Ventura
+        [-119.2290, 34.2750], // US-101 past Ventura
+        [-119.6982, 34.4208], // Santa Barbara
       ],
     },
     geojson: {
